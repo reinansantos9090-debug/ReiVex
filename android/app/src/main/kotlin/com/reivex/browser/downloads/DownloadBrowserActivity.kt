@@ -141,20 +141,6 @@ class DownloadBrowserActivity: ComponentActivity() {
         var preparingSiteDownload by remember {mutableStateOf(false)}
         val downloadStore=remember {DownloadStore(applicationContext)}
         val scope=rememberCoroutineScope()
-        fun submitHomeSearch() {
-            val query=homeSearch.trim()
-            if(query.isBlank())return
-            val destination=BrowserAddress.resolve(query)
-            if(destination==null)error="Endereço inválido"
-            else {
-                error=""
-                address=query
-                homeSearch=""
-                tab.home=false
-                browser.onResume()
-                browser.loadUrl(destination)
-            }
-        }
         val notificationPermission=rememberLauncherForActivityResult(
             ActivityResultContracts.RequestPermission(),
         ) { }
@@ -380,6 +366,20 @@ class DownloadBrowserActivity: ComponentActivity() {
                 setDownloadListener { url,ua,cd,mime,length ->
                     offer(url,ua,cd,mime,title,this.url.orEmpty(),browserLength=length.takeIf{it>0})
                 }
+            }
+        }
+        fun submitHomeSearch() {
+            val query=homeSearch.trim()
+            if(query.isBlank())return
+            val destination=BrowserAddress.resolve(query)
+            if(destination==null)error="Endereço inválido"
+            else {
+                error=""
+                address=query
+                homeSearch=""
+                tab.home=false
+                browser.onResume()
+                browser.loadUrl(destination)
             }
         }
         LaunchedEffect(tab.id) {
