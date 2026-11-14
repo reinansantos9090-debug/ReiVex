@@ -202,18 +202,37 @@ internal object DownloadSizeProbe {
             try {
                 trustedUrlLength(url)?.let { return@withContext Result(it,true,"googlevideo-clen") }
                 val boundedS3Range=DownloadSignedLinkPolicy.allowsBoundedS3RangeProbe(url)
-                connection=DownloadHttp.connect(url,headers,0,null,
-                    method=if(boundedS3Range)"GET" else "HEAD",
-                    probeRange=if(boundedS3Range)"bytes=0-0" else null,
-                    closeAfterResponse=boundedS3Range,
-                    connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS,
-                    redirectCookieProvider=DownloadSessionHeaders::cookieForTarget)
-                val c=connection
-                val bytes=directLength(c.responseCode,c.getHeaderFieldLong("Content-Length",-1),
-                    c.getHeaderField("Content-Range"),c.contentEncoding,c.contentType)
-                Result(bytes,bytes!=null,if(boundedS3Range)"signed-range" else "signed-head",
-                    DownloadResourceIdentity.bestName(c.getHeaderField("Content-Disposition"),
-                        c.url.toString(),c.contentType),c.contentType)
+                val ranges=if(boundedS3Range)listOf("bytes=0-0","bytes=0-") else listOf(null)
+                for((index,range) in ranges.withIndex()) {
+                    connection=DownloadHttp.connect(url,headers,0,null,
+                        method=if(boundedS3Range)"GET" else "HEAD",
+                        probeRange=range,
+                        closeAfterResponse=boundedS3Range,
+                        connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS,
+                        redirectCookieProvider=DownloadSessionHeaders::cookieForTarget)
+                    val c=connection
+                    val status=c.responseCode
+                    val bytes=directLength(status,c.getHeaderFieldLong("Content-Length",-1),
+                        c.getHeaderField("Content-Range"),c.contentEncoding,c.contentType)
+                    val name=DownloadResourceIdentity.bestName(c.getHeaderField("Content-Disposition"),
+                        c.url.toString(),c.contentType)
+                    val mime=c.contentType
+                    if(bytes!=null)
+                        return@withContext Result(bytes,true,
+                            if(boundedS3Range)"signed-range" else "signed-head",name,mime)
+                    // A few S3-compatible gateways reject a closed one-byte
+                    // range while accepting the same open-ended range used by
+                    // the actual transfer. Retry only that narrow case and
+                    // close immediately after the response headers.
+                    val retryOpenRange=boundedS3Range && index==0 &&
+                        status in setOf(400,405,416,501)
+                    if(retryOpenRange)connection?.disconnect()
+                    else return@withContext Result(null,false,
+                        if(status==401||status==403)"signed-http-$status"
+                        else if(boundedS3Range)"signed-range" else "signed-head",name,mime)
+                    connection=null
+                }
+                Result.Unknown
             } catch(c: kotlinx.coroutines.CancellationException) { throw c }
             catch(_: Exception) { Result.Unknown }
             finally { connection?.disconnect() }
