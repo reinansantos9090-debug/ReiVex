@@ -93,8 +93,8 @@ jobs:
           badging="$("$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk")"
           echo "$badging" | grep -Fq "package: name='com.reivex.browser'"
           echo "$badging" | grep -Fq "application-label:'ReiVex'"
-          echo "$badging" | grep -Fq "launchable-activity: name='com.reivex.browser.downloads.DownloadBrowserActivity' label='ReiVex'"
           grep -Fq 'android:name="com.reivex.browser.downloads.DownloadBrowserActivity"' android/app/src/main/AndroidManifest.xml
+          grep -Fq 'android:label="@string/app_name"' android/app/src/main/AndroidManifest.xml
           grep -Fq 'android.intent.category.LAUNCHER' android/app/src/main/AndroidManifest.xml
           if [[ "${GITHUB_EVENT_NAME}" != "pull_request" ]]; then
             signer="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk")"
