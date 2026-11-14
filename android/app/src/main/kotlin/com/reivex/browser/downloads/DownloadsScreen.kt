@@ -294,6 +294,7 @@ initialCandidates:List<DownloadSourceSelection.Candidate> = emptyList()) {
         ) {
             Icon(Icons.Filled.Add,"Adicionar download",Modifier.size(32.dp))
         }
+        }
     }
     if(add && sourcePicker && edit==null) AlertDialog(
         onDismissRequest={sourcePicker=false},
