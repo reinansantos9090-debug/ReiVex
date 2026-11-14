@@ -1,3 +1,14 @@
+package com.reivex.browser.downloads
+
+import android.content.Context
+import android.net.Uri
+import android.os.Build
+import android.provider.DocumentsContract
+import android.provider.MediaStore
+import android.system.Os
+import android.system.OsConstants
+import java.io.File
+
 /** Proven URI aliases of an app-owned output. A title or filename alone never proves a duplicate. */
 internal object DownloadFileKeys {
     fun fileKeys(context: Context,value: String): Set<String> = buildSet {

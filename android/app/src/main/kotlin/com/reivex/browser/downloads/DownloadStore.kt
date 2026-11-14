@@ -209,7 +209,13 @@ class DownloadStore(context: Context) {
         if(before.state=="SAVING") throw IllegalStateException("Aguarde o salvamento final")
         when(action) {
             "pause" -> mutate(id) { if(it.optString("state") in DownloadState.pending && it.optString("state")!="SAVING") it.put("state", "PAUSED") }
-            "resume" -> { mutate(id) { if(it.optString("state") in setOf("PAUSED", "ERROR", "WAITING")) it.put("state", "QUEUED").put("attempts", 0).put("nextAttempt", 0) }
+            "resume" -> {
+                mutate(id) {
+                    if(it.optString("state") in setOf("PAUSED", "ERROR", "WAITING")) {
+                        it.put("state", "QUEUED").put("attempts", 0).put("nextAttempt", 0)
+                    }
+                }
+            }
             "cancel" -> {
                 var output=""
                 val cancelled=mutate(id) {
@@ -227,7 +233,14 @@ class DownloadStore(context: Context) {
                 }
                 mutate(id) { it.remove("transferUri") }
             }
-            "restart" -> { require(before.state !in setOf("DOWNLOADING","SAVING","VERIFYING","COMPLETE")); mutate(id) { require(it.optString("state") in setOf("PAUSED","ERROR","CORRUPT","CANCELLED")); it.put("restart",true).put("state","QUEUED").put("bytes",0).put("total",-1).put("attempts",0).put("nextAttempt",0) }
+            "restart" -> {
+                require(before.state !in setOf("DOWNLOADING","SAVING","VERIFYING","COMPLETE"))
+                mutate(id) {
+                    require(it.optString("state") in setOf("PAUSED","ERROR","CORRUPT","CANCELLED"))
+                    it.put("restart",true).put("state","QUEUED").put("bytes",0).put("total",-1)
+                        .put("attempts",0).put("nextAttempt",0)
+                }
+            }
         }
     }
     fun updateSource(id: String,url: String,headers: Map<String,String>,hash: String,hashType: String,destination: String) {
