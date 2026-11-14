@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const path=require('node:path');
-const source=fs.readFileSync(path.join(__dirname,'../../main/kotlin/com/reianix/reianix_local/downloads/BrowserMediaCapture.kt'),'utf8');
+const source=fs.readFileSync(path.join(__dirname,'../../main/kotlin/com/reivex/browser/downloads/BrowserMediaCapture.kt'),'utf8');
 const script=source.split('val SCRIPT="""')[1].split('""".trimIndent()')[0].replaceAll("${'$'}",'$');
 const playlist='https://cdn.example/i/token/h.jpg';
 const body='#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1800000,RESOLUTION=1280x720\n720.jpg\n#EXT-X-STREAM-INF:BANDWIDTH=900000,RESOLUTION=640x360\n360.jpg\n';
@@ -20,7 +20,7 @@ function page(responseUrl=playlist){
   const response={url:responseUrl,status:200,headers:{get:k=>k==='content-type'?'image/jpeg':String(body.length)},clone:()=>({body:{getReader:()=>{
     let read=false;return {read:async()=>read?{done:true}:(read=true,{done:false,value:new TextEncoder().encode(body)}),releaseLock(){}};
   }}})};
-  const win={addEventListener(){},ReiAnixMedia:{postMessage:s=>messages.push(JSON.parse(s))},fetch:async()=>response};
+  const win={addEventListener(){},ReiVexMedia:{postMessage:s=>messages.push(JSON.parse(s))},fetch:async()=>response};
   win.top=win;win.parent=win;
   class XHR{addEventListener(){}};XHR.prototype.open=function(){};
   const context={window:win,document:doc,parent:win,innerWidth:400,innerHeight:800,location:{href:'https://site.example/anime'},URL,Date,Math,Number,Set,Map,TextDecoder,XMLHttpRequest:XHR,

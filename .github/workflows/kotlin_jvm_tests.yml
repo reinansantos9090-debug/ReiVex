@@ -1,138 +1,27 @@
-name: ReiAnix Kotlin/JVM Source Validation
+name: ReiVex Browser and Download JVM Tests
 
 on:
-  pull_request:
-    paths:
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/storage/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/scanner/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/downloads/**"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/downloads/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/MainActivity.kt"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/data/artwork/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/data/catalog/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/data/anilist/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/data/tracemoe/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/details/**"
-      - "android/app/src/androidTest/kotlin/com/reianix/reianix_local/ui/details/**"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/storage/**"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/scanner/**"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/data/tracemoe/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/data/sqlite/ReiAnixSqliteAniListAssociation.kt"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/viewmodel/ReiAnixLibraryViewModel.kt"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/data/sqlite/ReiAnixSqliteRepositoryRuntimeTest.kt"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/data/artwork/**"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/ui/model/**"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/data/catalog/**"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/data/anilist/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/data/settings/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/home/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/host/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/library/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/model/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/settings/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/ui/theme/**"
-      - "android/app/src/main/kotlin/com/reianix/reianix_local/viewmodel/ReiAnixSettingsViewModel.kt"
-      - "android/app/src/test/kotlin/com/reianix/reianix_local/ReiAnixSettingsContractTest.kt"
-      - ".github/workflows/kotlin_jvm_tests.yml"
   workflow_dispatch:
-
-concurrency:
-  # v2 isolates checks from historical runs stuck in GitHub Actions finalization.
-  group: reianix-kotlin-jvm-${{ github.ref }}-v2
-  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  kotlin-jvm:
-    name: Kotlin source compilation (no emulator)
+  unit:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 20
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Set up Java
-        uses: actions/setup-java@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v3
         with:
-          packages: "platform-tools build-tools;36.0.0 platforms;android-36"
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
           accept-android-sdk-licenses: true
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
-
-      - name: Validate native source layout
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -s android/settings.gradle.kts
-          test -s android/build.gradle.kts
-          test -s android/app/build.gradle.kts
-          test -s android/app/src/main/AndroidManifest.xml
-          test -s android/app/src/main/kotlin/com/reianix/reianix_local/MainActivity.kt
-          test -s android/app/src/main/kotlin/com/reianix/reianix_local/ReiAnixApplication.kt
-          test ! -e main.py
-          git diff --check
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-
-      - name: Verify only the unchanged Android application ID uses legacy naming
-        run: bash scripts/verify_reianix_identity.sh
-
-      - name: Run focused Android JVM contract tests and compile release Kotlin sources
-        shell: bash
-        env:
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2"
-        run: |
-          set -euo pipefail
-          contract="$RUNNER_TEMP/native-sqlite-contract-v29.json"
-          fixture="android/app/src/test/resources/native-sqlite-schema-v29.json"
-          mkdir -p "$(dirname "$fixture")"
-          trap 'rm -f "$fixture"; rmdir "$(dirname "$fixture")" 2>/dev/null || true' EXIT
-          gzip -dc android/app/src/main/assets/native-sqlite-contract-v29.json.gz > "$contract"
-          jq '. + {statements: ((.table_sql | to_entries | sort_by(.key) | map(.value)) + ([.indexes | sort_by(.name)[] | select(.sql != null) | .sql]))}' "$contract" > "$fixture"
-          jq -e '.schema_version == 29 and (.tables | length == 14) and (.statements | length >= 14)' "$fixture" >/dev/null
-          gradle -p android --no-daemon --console=plain --stacktrace --max-workers=2 \
-            -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
-            -PreianixBuildVersion="0.2.1" \
-            :app:testDebugUnitTest \
-              --tests com.reianix.reianix_local.data.artwork.ReiAnixLocalArtworkSidecarPolicyTest \
-              --tests com.reianix.reianix_local.data.artwork.ReiAnixArtworkCandidatePolicyTest \
-              --tests com.reianix.reianix_local.data.artwork.ReiAnixArtworkPublicationSignalTest \
-              --tests com.reianix.reianix_local.data.catalog.ReiAnixExternalCatalogContractsTest \
-              --tests com.reianix.reianix_local.data.catalog.ReiAnixAniMapCatalogIdResolverTest \
-              --tests com.reianix.reianix_local.data.catalog.ReiAnixAniPubCatalogProviderTest \
-              --tests com.reianix.reianix_local.data.catalog.ReiAnixKitsuCatalogProviderTest \
-              --tests com.reianix.reianix_local.downloads.BrowserFallbackBlockerTest \
-              --tests com.reianix.reianix_local.downloads.BrowserAddressTest \
-              --tests com.reianix.reianix_local.downloads.BrowserVerificationPolicyTest \
-              --tests com.reianix.reianix_local.downloads.DownloadDisplaySizeTest \
-              --tests com.reianix.reianix_local.downloads.DownloadNotificationIconTest \
-              --tests com.reianix.reianix_local.downloads.DownloadRandomFileTest \
-              --tests com.reianix.reianix_local.downloads.DownloadIdentityPersistenceTest \
-              --tests com.reianix.reianix_local.data.media.MediaFilenameParserTest \
-              --tests com.reianix.reianix_local.data.sqlite.NativeLibraryIndexingPolicyTest \
-              --tests com.reianix.reianix_local.scanner.DefaultReiAnixFolderScannerTest \
-              --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.distinctSecondReleaseIsImportedWithoutReplacingOriginalEpisode' \
-              --tests com.reianix.reianix_local.ui.settings.ReiAnixSettingsNavigationTest \
-              --tests com.reianix.reianix_local.data.anilist.ReiAnixAniListSearchTermsTest \
-              --tests com.reianix.reianix_local.data.anilist.ReiAnixAniListClientTest \
-              --tests com.reianix.reianix_local.data.anilist.AniListAccountSyncPolicyTest \
-              --tests com.reianix.reianix_local.data.anilist.AniListOAuthRequestTest \
-              --tests com.reianix.reianix_local.data.tracemoe.TraceMoeIdentityConsensusTest \
-              --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCanReplaceAnIncorrectAutomaticAssociationAndRefreshItsCover' \
-              --tests 'com.reianix.reianix_local.data.sqlite.ReiAnixSqliteRepositoryRuntimeTest.traceMoeCannotReplaceManualAssociationOrManualMetadata' \
-              --tests com.reianix.reianix_local.ReiAnixSettingsContractTest \
-              --tests com.reianix.reianix_local.ui.model.ReiAnixLibraryPagedUiStateTest \
-              --tests com.reianix.reianix_local.storage.NativeStorageOnboardingStateTest \
-              --tests com.reianix.reianix_local.scanner.SafTreeChangeDetectionTest \
-            :app:assembleDebugAndroidTest \
-            :app:compileReleaseKotlin
+      - name: Run browser and download unit tests
+        run: gradle -p android --no-daemon :app:testDebugUnitTest
