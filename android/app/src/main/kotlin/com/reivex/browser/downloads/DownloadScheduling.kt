@@ -3,6 +3,8 @@ package com.reivex.browser.downloads
 import android.app.*
 import android.app.job.*
 import android.content.*
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.reivex.browser.R
@@ -43,15 +45,33 @@ object DownloadScheduling {
             if(userInitiated) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.KEEP,request)
     }
 
-    // CloudStream-style, state-specific icons: show the official ReiVex
-    // mark during pending/running downloads and the dedicated checked
-    // completion icon after success. Keep existing completed notifications.
-    // Android/One UI may still show the launcher icon on notification cards.
+    // The active small icon is a monochrome version of the official ReiVex R.
+    // Preserve the existing state-specific indicators for paused, failed and
+    // completed transfers. The expanded notification also gets the full-color
+    // launcher artwork through setLargeIcon().
     internal fun downloadStateIcon(state: String?): Int = when (state) {
         "COMPLETE" -> R.drawable.ic_reivex_download_done
         "PAUSED" -> R.drawable.ic_reivex_download_paused
         "ERROR", "CORRUPT" -> R.drawable.ic_reivex_download_error
         else -> R.drawable.ic_reivex_download_active
+    }
+
+    @Volatile private var cachedOfficialIcon: Bitmap? = null
+
+    // Decode the current launcher artwork once, at notification scale.
+    // The full-size 432px image is unnecessary for frequently updated progress
+    // notifications and would waste memory and binder transaction space.
+    private fun officialLargeIcon(context: Context): Bitmap? {
+        cachedOfficialIcon?.let { return it }
+        return synchronized(this) {
+            cachedOfficialIcon ?: BitmapFactory.decodeResource(context.resources,R.drawable.ic_reivex_launcher)?.let { original ->
+                val size=(64f*context.resources.displayMetrics.density).toInt().coerceIn(64,256)
+                val scaled=Bitmap.createScaledBitmap(original,size,size,true)
+                if(scaled !== original) original.recycle()
+                cachedOfficialIcon=scaled
+                scaled
+            }
+        }
     }
 
     private fun itemNotification(context: Context,item: DownloadItem?,text: String): Notification {
@@ -66,6 +86,7 @@ object DownloadScheduling {
             .setSmallIcon(downloadStateIcon(item?.state))
             .setContentIntent(open).setOnlyAlertOnce(true)
             .setCategory(if(completed) NotificationCompat.CATEGORY_STATUS else NotificationCompat.CATEGORY_PROGRESS)
+        officialLargeIcon(context)?.let { builder.setLargeIcon(it) }
         // Active transfers belong to the foreground-job group. Completion must
         // not: the OS may dismiss grouped children when it stops that job.
         if(!completed) builder.setGroup("reivex.downloads")
@@ -100,9 +121,8 @@ object DownloadScheduling {
             if(item.state=="COMPLETE") {
                 // Completed notifications stay visible until the user dismisses
                 // them. An automatic timeout hid the only completion feedback.
-                // Our dedicated completion glyph is already selected above.
-                // No unsupported notification extras: notification card avatar
-                // selection is owned by Android/One UI, not by the app.
+                // Completion keeps its checkmark small icon and the official
+                // ReiVex launcher artwork as its full-color large icon.
                 builder.setContentText("Download concluído • ${item.name}")
                     .setCategory(NotificationCompat.CATEGORY_STATUS)
                     .setOngoing(false)
@@ -119,9 +139,11 @@ object DownloadScheduling {
     }
     fun notification(context: Context,text: String): Notification {
         itemNotification(context,null,text) // Ensure the channel exists before foreground startup.
-        return NotificationCompat.Builder(context,"downloads").setSmallIcon(downloadStateIcon(null))
+        val builder=NotificationCompat.Builder(context,"downloads").setSmallIcon(downloadStateIcon(null))
             .setContentTitle("Downloads do ReiVex").setContentText(text).setOnlyAlertOnce(true).setOngoing(true)
-            .setGroup("reivex.downloads").setGroupSummary(true).build()
+            .setGroup("reivex.downloads").setGroupSummary(true)
+        officialLargeIcon(context)?.let { builder.setLargeIcon(it) }
+        return builder.build()
     }
     private val posted=java.util.concurrent.ConcurrentHashMap<String,String>()
     fun publish(context: Context) {
