@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 10742)
-Total output lines: 711
-
 package com.reivex.browser.downloads
 
 import android.Manifest
@@ -332,7 +329,52 @@ initialCandidates:List<DownloadSourceSelection.Candidate> = emptyList()) {
             it.lowercase() !in setOf("authorization","cookie","referer","origin","proxy-authorization")
         }
         DownloadDialog(selectedSource,chosenHeaders,initialTitle,initialName,edit,busy,error,
-            onDismiss={ if(!busy) { add=false; edit=null } },onSubmit={ url,name,dest,hash,type,headers,autoName,det…742 tokens truncated…ing("destination").orEmpty()) }
+            onDismiss={ if(!busy) { add=false; edit=null } },onSubmit={ url,name,dest,hash,type,headers,autoName,detected ->
+        busy=true; error=""
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val editing=edit
+                    val profile=store.profile(url)
+                    val combined=downloadProfileHeaders(profile).toMutableMap()
+                    headers.forEach { (key,value) -> combined.keys.filter {it.equals(key,true)}.toList().forEach(combined::remove); combined[key]=value }
+                    val expected=""
+                    val algorithm="SHA-256"
+                    if(editing==null) store.enqueue(url,name,dest,expected,algorithm,combined,automaticName=autoName,
+                        playerCapture?.let {JSONObject(it)}?.takeIf {it.optString("url")==url},
+                        hlsHint=hlsHint && url==initialUrl,
+                        detectedSize=detected?.bytes,detectedExact=detected?.exact==true)
+                    else store.updateSource(editing.id,url,combined,expected,algorithm,dest)
+                    DownloadSnapshots.refresh(context)
+                }
+                add=false; edit=null
+                if(Build.VERSION.SDK_INT>=33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                DownloadScheduling.schedule(context)
+            } catch(e: IllegalArgumentException) { error=e.message ?: "Confira os dados do download" }
+            catch(_: Exception) { error="Não foi possível adicionar o download. Confira o link, a pasta e o nome do arquivo." }
+            finally { busy=false }
+        }
+    },hlsHint=hlsHint && initialUrl.isNotBlank() && selectedSource==initialUrl,
+        initialEstimatedSize=initialEstimatedSize?.takeIf {selectedSource==initialUrl}) }
+}
+
+@Composable
+internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String>,initialTitle: String,initialName: String,editing: DownloadItem?,busy: Boolean,submissionError: String,onDismiss: ()->Unit,
+    onSubmit: (String,String,String,String,String,Map<String,String>,Boolean,DownloadSizeProbe.Result?)->Unit,
+    hlsHint: Boolean = false,initialKnownSize:Long? = null,
+    initialEstimatedSize:Long? = null) {
+    val context=LocalContext.current
+    var url by remember { mutableStateOf(initialUrl) }
+    val initialReferer=initialHeaders.entries.firstOrNull { it.key.equals("referer",true) }?.value.orEmpty()
+    var name by remember { mutableStateOf(editing?.name ?: DownloadIdentity.suggestedName(
+        initialTitle,initialUrl,initialName,initialReferer)) }
+    // Names passed by the ReiVex browser are deliberate; a CDN header must not replace them.
+    // A fallback CDN name is not a deliberate user choice. Allow a meaningful
+    // Content-Disposition to correct it when the server responds.
+    var nameTouched by remember {
+        mutableStateOf(editing!=null || (initialName.isNotBlank() && !DownloadIdentity.isGenericMediaName(initialName)))
+    }
+    var destination by remember { mutableStateOf(editing?.json?.optString("destination").orEmpty()) }
     var hash by remember { mutableStateOf(editing?.json?.optString("expectedHash").orEmpty()) }
     var hashType by remember { mutableStateOf(editing?.json?.optString("hashType","SHA-256") ?: "SHA-256") }
     var cookie by remember { mutableStateOf(initialHeaders.entries.firstOrNull { it.key.equals("cookie",true) }?.value.orEmpty()) }
