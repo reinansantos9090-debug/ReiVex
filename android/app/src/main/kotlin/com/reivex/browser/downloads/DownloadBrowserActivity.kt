@@ -37,8 +37,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.reivex.browser.ui.theme.ReiVexComposeTheme
 import org.json.JSONArray
@@ -530,7 +532,10 @@ class DownloadBrowserActivity: ComponentActivity() {
                     Text(
                         "ReiVex",
                         style=MaterialTheme.typography.headlineLarge.copy(
-                            fontWeight=FontWeight.SemiBold,
+                            fontFamily=FontFamily.SansSerif,
+                            fontSize=42.sp,
+                            fontWeight=FontWeight.Medium,
+                            letterSpacing=0.sp,
                             color=MaterialTheme.colorScheme.onBackground,
                         ),
                     )
