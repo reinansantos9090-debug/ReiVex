@@ -663,7 +663,12 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
                         }
                     }
                     if(!sizeLoading && (sizeResult?.bytes ?: 0L)<=0L && url.isNotBlank()) {
-                        Text("Não foi possível consultar o tamanho. Toque em atualizar para tentar novamente.",
+                        val sizeMessage=when(sizeResult?.source) {
+                            "signed-http-401" -> "O servidor exige autenticação. Abra novamente o vídeo e capture o link."
+                            "signed-http-403" -> "O servidor recusou o link; ele pode ter expirado. Gere um link novo na página."
+                            else -> "Não foi possível consultar o tamanho. Toque em atualizar para tentar novamente."
+                        }
+                        Text(sizeMessage,
                             color=Color.LightGray,style=MaterialTheme.typography.bodySmall)
                     }
                     TextField(
