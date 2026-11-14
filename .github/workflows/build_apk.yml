@@ -38,8 +38,48 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
+      - name: Select ReiVex APK signing mode
+        id: signing_mode
+        env:
+          REIVEX_ANDROID_KEYSTORE_B64: ${{ secrets.REIVEX_ANDROID_KEYSTORE_B64 }}
+          REIVEX_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.REIVEX_ANDROID_KEYSTORE_PASSWORD }}
+          REIVEX_ANDROID_KEY_PASSWORD: ${{ secrets.REIVEX_ANDROID_KEY_PASSWORD }}
+          REIVEX_ANDROID_KEY_ALIAS: ${{ secrets.REIVEX_ANDROID_KEY_ALIAS }}
+          REIVEX_ANDROID_EXPECTED_CERT_SHA256: ${{ vars.REIVEX_ANDROID_EXPECTED_CERT_SHA256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            echo "mode=pr_preview" >> "$GITHUB_OUTPUT"
+            echo "REIVEX_APK_MODE=pr_preview" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          required=(REIVEX_ANDROID_KEYSTORE_B64 REIVEX_ANDROID_KEYSTORE_PASSWORD REIVEX_ANDROID_KEY_PASSWORD REIVEX_ANDROID_KEY_ALIAS REIVEX_ANDROID_EXPECTED_CERT_SHA256)
+          present=0
+          missing=()
+          for name in "${required[@]}"; do
+            if [[ -n "${!name:-}" ]]; then
+              present=$((present + 1))
+            else
+              missing+=("$name")
+            fi
+          done
+
+          if (( present == 0 )); then
+            echo "mode=debug_preview" >> "$GITHUB_OUTPUT"
+            echo "REIVEX_APK_MODE=debug_preview" >> "$GITHUB_ENV"
+            echo "::warning title=ReiVex release signing unavailable::No ReiVex signing values are configured. Producing a DEBUG preview APK only, not a stable production release."
+          elif (( present != ${#required[@]} )); then
+            echo "::error title=Incomplete ReiVex release signing::Missing: ${missing[*]}. Configure all five values or remove all values to enable an explicitly labeled debug preview."
+            exit 1
+          else
+            echo "mode=release" >> "$GITHUB_OUTPUT"
+            echo "REIVEX_APK_MODE=release" >> "$GITHUB_ENV"
+          fi
+
       - name: Configure ReiVex release signing
-        if: github.event_name != 'pull_request'
+        if: steps.signing_mode.outputs.mode == 'release'
         env:
           REIVEX_ANDROID_KEYSTORE_B64: ${{ secrets.REIVEX_ANDROID_KEYSTORE_B64 }}
           REIVEX_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.REIVEX_ANDROID_KEYSTORE_PASSWORD }}
@@ -79,8 +119,16 @@ jobs:
         run: echo "REIVEX_ALLOW_DEBUG_RELEASE_FOR_PR=true" >> "$GITHUB_ENV"
 
       - name: Build ReiVex release APK
+        if: steps.signing_mode.outputs.mode != 'debug_preview'
         run: >-
           gradle -p android --no-daemon :app:assembleRelease
+          -PreivexBuildNumber="$GITHUB_RUN_NUMBER"
+          -PreivexBuildVersion="0.1.${GITHUB_RUN_NUMBER}"
+
+      - name: Build ReiVex debug preview APK (no release key configured)
+        if: steps.signing_mode.outputs.mode == 'debug_preview'
+        run: >-
+          gradle -p android --no-daemon :app:assembleDebug
           -PreivexBuildNumber="$GITHUB_RUN_NUMBER"
           -PreivexBuildVersion="0.1.${GITHUB_RUN_NUMBER}"
 
@@ -88,7 +136,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          apk="android/app/build/outputs/apk/release/app-release.apk"
+          if [[ "$REIVEX_APK_MODE" == "debug_preview" ]]; then
+            apk="android/app/build/outputs/apk/debug/app-debug.apk"
+          else
+            apk="android/app/build/outputs/apk/release/app-release.apk"
+          fi
           test -s "$apk"
           badging="$("$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk")"
           echo "$badging" | grep -Fq "package: name='com.reivex.browser'"
@@ -96,21 +148,40 @@ jobs:
           grep -Fq 'android:name="com.reivex.browser.downloads.DownloadBrowserActivity"' android/app/src/main/AndroidManifest.xml
           grep -Fq 'android:label="@string/app_name"' android/app/src/main/AndroidManifest.xml
           grep -Fq 'android.intent.category.LAUNCHER' android/app/src/main/AndroidManifest.xml
-          if [[ "${GITHUB_EVENT_NAME}" != "pull_request" ]]; then
+          if [[ "$REIVEX_APK_MODE" == "release" ]]; then
             signer="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk")"
             actual="$(printf '%s\n' "$signer" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1 | tr '[:upper:]' '[:lower:]')"
             expected="$(printf '%s' "$REIVEX_ANDROID_EXPECTED_CERT_SHA256" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
             test -n "$actual" && test "$actual" = "$expected"
+          else
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$apk"
           fi
-          echo "Verified package com.reivex.browser and ReiVex launcher."
+          echo "Verified package com.reivex.browser and ReiVex launcher (mode: $REIVEX_APK_MODE)."
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ReiVex-APK-${{ github.run_number }}
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: ReiVex-${{ steps.signing_mode.outputs.mode == 'release' && 'Release' || 'Preview' }}-APK-${{ github.run_number }}
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Explain signing and artifact type
+        if: success()
+        shell: bash
+        run: |
+          if [[ "$REIVEX_APK_MODE" == "release" ]]; then
+            echo "### ReiVex stable release" >> "$GITHUB_STEP_SUMMARY"
+            echo "Signed with the configured ReiVex release key. Certificate fingerprint was verified." >> "$GITHUB_STEP_SUMMARY"
+          elif [[ "$REIVEX_APK_MODE" == "pr_preview" ]]; then
+            echo "### ReiVex PR preview" >> "$GITHUB_STEP_SUMMARY"
+            echo "Release variant signed with a temporary debug key for CI testing only." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### ReiVex debug preview (not a production release)" >> "$GITHUB_STEP_SUMMARY"
+            echo "The ReiVex release key is not configured. This APK is **debug-signed**, and its signing identity is not guaranteed to remain stable between runs. Do not publish it as a release or expect in-place upgrades. Configure the ReiVex signing secrets and certificate fingerprint to enable production releases." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Remove temporary signing key
         if: always()
