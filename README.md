@@ -28,6 +28,24 @@ gradle -p android --no-daemon :app:assembleDebug
 
 Release signing is configured separately for ReiVex. The `REIVEX_ANDROID_*` secrets and expected certificate fingerprint belong to this repository and must be set from a ReiVex-owned signing key. ReiAnix signing secrets and key material are not used.
 
+
+## CI APK signing
+
+The `Build ReiVex Android APK` workflow always builds and verifies an APK. Its artifact name identifies the signing mode:
+
+- **ReiVex-Preview-APK**: PR builds use a temporary debug key on the release variant. If the `main` branch has no ReiVex release-signing values at all, it builds the **debug** variant instead. These APKs are for testing only: keys may change between runs, so installation over a previous build is not guaranteed.
+- **ReiVex-Release-APK**: only on `main`/manual runs when all ReiVex release-signing values exist. It verifies the signing certificate SHA-256 before uploading the artifact.
+- Partially configured signing is an error rather than silently producing a debug APK. A wrong certificate fingerprint is also an error.
+
+To enable a stable release APK, configure these secrets in **ReiVex → Settings → Secrets and variables → Actions → Repository secrets**:
+
+1. `REIVEX_ANDROID_KEYSTORE_B64` — base64 of a dedicated ReiVex release keystore file.
+2. `REIVEX_ANDROID_KEYSTORE_PASSWORD` — keystore password.
+3. `REIVEX_ANDROID_KEY_PASSWORD` — key password.
+4. `REIVEX_ANDROID_KEY_ALIAS` — alias in that keystore.
+
+Set the repository **variable** `REIVEX_ANDROID_EXPECTED_CERT_SHA256` to the SHA-256 certificate fingerprint for the same alias. Protect and back up the keystore and passwords; the original signing key is needed for future updates. Do not commit secrets or private keystores. ReiVex must use its own signing configuration, independent of ReiAnix.
+
 ## License
 
 ReiVex uses the Apache License 2.0. See [LICENSE](LICENSE).
