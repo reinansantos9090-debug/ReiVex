@@ -7,6 +7,7 @@ import java.util.Locale
 /** HTTP and signed-URL download metadata, independent of network and UI. */
 internal object DownloadResourceIdentity {
     private val technical=Regex("""(?i)^(?:index|master|playlist|manifest|stream|video|videoplayback|download|file|media|resource|output|blob|part)(?:[-_. ]*\d+)?$""")
+    private val numericId=Regex("""^\d{3,}$""")
     private val hexId=Regex("""(?i)^[a-f0-9]{16,}$""")
     private val uuid=Regex("""(?i)^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$""")
     private val extensions=setOf("mp4","m4v","ts","m2ts","mkv","mov","avi","wmv","flv","webm","3gp","m3u8","mpd","bin")
@@ -40,7 +41,7 @@ internal object DownloadResourceIdentity {
     fun opaque(value:String):Boolean {
         val name=value.substringAfterLast('/').substringBefore('?').trim()
         val stem=name.substringBeforeLast('.',name).lowercase(Locale.ROOT)
-        return stem.isBlank() || technical.matches(stem) || hexId.matches(stem) ||
+        return stem.isBlank() || technical.matches(stem) || numericId.matches(stem) || hexId.matches(stem) ||
             uuid.matches(stem) || stem.length>190 ||
             // CDN capability tokens are mixed-case IDs, sometimes with a v1. prefix.
             // Check the original case: lowercasing first hides this signal.
