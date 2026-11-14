@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -62,7 +63,7 @@ class DownloadsActivity: ComponentActivity() {
                     DownloadsScreen(incoming,incomingHeaders,incomingTitle,incomingName,
                         playerCapture=incomingCapture,hlsHint=incomingHlsHint,
                         initialEstimatedSize=incomingSizeHint,
-                        initialCandidates=incomingChoices,onBack={ finish() })
+                        initialCandidates=incomingChoices)
                 }
             }
         } }
@@ -133,13 +134,13 @@ class DownloadsActivity: ComponentActivity() {
 @Composable
 fun DownloadsScreen(initialUrl: String = "", suppliedHeaders: Map<String,String> = emptyMap(),initialTitle: String = "",initialName: String = "",playerCapture: String? = null,hlsHint: Boolean = false,
 initialEstimatedSize:Long?=null,
-initialCandidates:List<DownloadSourceSelection.Candidate> = emptyList(),
-onBack: (() -> Unit)? = null) {
+initialCandidates:List<DownloadSourceSelection.Candidate> = emptyList()) {
     val context=LocalContext.current
     val store=remember(context) { DownloadStore(context) }
     val scope=rememberCoroutineScope()
     val items by DownloadSnapshots.items.collectAsStateWithLifecycle()
     var queueMenu by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableIntStateOf(0) }
     var newestFirst by remember { mutableStateOf(false) }
     var initialized by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
@@ -172,29 +173,46 @@ onBack: (() -> Unit)? = null) {
     }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
-            if(onBack!=null) IconButton(onClick=onBack) { Icon(Icons.Filled.ArrowBack,"Voltar") }
-            Text("Fila de download",style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f))
+            Text("ReiVex",style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f))
+            IconButton(onClick={
+                context.startActivity(Intent(context,DownloadBrowserActivity::class.java))
+            }) { Icon(Icons.Filled.Public,"Abrir navegador") }
             Box {
-                IconButton(onClick={queueMenu=true},enabled=initialized && !busy) {Icon(Icons.Filled.Sort,"Opções da fila")}
+                IconButton(onClick={queueMenu=true},enabled=initialized && !busy) {
+                    Icon(Icons.Filled.MoreVert,"Mais opções")
+                }
                 DropdownMenu(expanded=queueMenu,onDismissRequest={queueMenu=false}) {
                     DropdownMenuItem(text={Text("Adicionar download")},leadingIcon={Icon(Icons.Filled.Add,null)},onClick={queueMenu=false;add=true})
                     DropdownMenuItem(text={Text(if(newestFirst)"Mais antigos primeiro" else "Mais recentes primeiro")},leadingIcon={Icon(Icons.Filled.SwapVert,null)},onClick={newestFirst=!newestFirst;queueMenu=false})
                 }
             }
         }
-        if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error,modifier=Modifier.padding(20.dp))
-        if(!initialized && error.isBlank()) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if(initialized && items.none {it.state !in setOf("COMPLETE","CANCELLED")}) {
-            Column(Modifier.fillMaxWidth().padding(24.dp),horizontalAlignment=Alignment.CenterHorizontally) {
-                Icon(Icons.Filled.Download,null,Modifier.size(48.dp))
-                Text("Seus downloads aparecem aqui",style=MaterialTheme.typography.titleMedium)
-                Text("Cole um link direto ou compartilhe um link de outro aplicativo.")
-                TextButton(onClick={ add=true }) { Text("Adicionar download") }
+        val allDownloads=items.filter {it.state!="CANCELLED"}
+        val activeDownloads=allDownloads.filter {it.state!="COMPLETE"}
+        val completedDownloads=allDownloads.filter {it.state=="COMPLETE"}
+        TabRow(selectedTabIndex=selectedTab) {
+            listOf(
+                "Todos" to allDownloads.size,
+                "Baixando" to activeDownloads.size,
+                "Completos" to completedDownloads.size,
+            ).forEachIndexed { index, (label,count) ->
+                Tab(
+                    selected=selectedTab==index,
+                    onClick={selectedTab=index},
+                    text={Text("$label ($count)",maxLines=1,overflow=TextOverflow.Ellipsis)},
+                )
             }
         }
-        LazyColumn(Modifier.weight(1f),contentPadding=PaddingValues(horizontal=20.dp,vertical=12.dp)) {
-            val pending=items.filter {it.state !in setOf("COMPLETE","CANCELLED")}.let {rows -> if(newestFirst)rows else rows.reversed()}
-            items(pending,key={it.id}) { item ->
+        if(error.isNotBlank()) Text(error,color=MaterialTheme.colorScheme.error,modifier=Modifier.padding(20.dp))
+        if(!initialized && error.isBlank()) LinearProgressIndicator(Modifier.fillMaxWidth())
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            LazyColumn(Modifier.fillMaxSize().padding(bottom=88.dp),contentPadding=PaddingValues(horizontal=20.dp,vertical=12.dp)) {
+                val visibleDownloads=when(selectedTab) {
+                    1 -> activeDownloads
+                    2 -> completedDownloads
+                    else -> allDownloads
+                }.let { rows -> if(newestFirst)rows else rows.reversed() }
+                items(visibleDownloads,key={it.id}) { item ->
                 var menu by remember(item.id) {mutableStateOf(false)}
                 Row(Modifier.fillMaxWidth().heightIn(min=64.dp).clickable {menu=true}.padding(vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
                     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)) {
@@ -260,6 +278,22 @@ onBack: (() -> Unit)? = null) {
                     }
                 }
             }
+        }
+        FloatingActionButton(
+            onClick={
+                selectedSource=""
+                sourcePicker=false
+                edit=null
+                error=""
+                add=true
+            },
+            modifier=Modifier.align(Alignment.BottomEnd).padding(end=20.dp,bottom=20.dp).size(64.dp),
+            shape=CircleShape,
+            containerColor=MaterialTheme.colorScheme.primary,
+            contentColor=MaterialTheme.colorScheme.onPrimary,
+        ) {
+            Icon(Icons.Filled.Add,"Adicionar download",Modifier.size(32.dp))
+        }
         }
     }
     if(add && sourcePicker && edit==null) AlertDialog(
