@@ -1,49 +1,33 @@
-# ReiAnix Local
+# ReiVex
 
-ReiAnix é uma biblioteca Android nativa para organizar e reproduzir vídeos de anime armazenados localmente. A aplicação usa Kotlin, Jetpack Compose, SQLite e Media3. Os arquivos de vídeo permanecem no dispositivo; o AniList é utilizado para metadados e capas.
+ReiVex is an Android browser with an integrated download manager. It is a separate app from ReiAnix: it has its own Android application ID (`com.reivex.browser`), private download database, preferences, and release signing configuration.
 
-## Ambiente de desenvolvimento
+## Browser
 
-- JDK 17
-- Android SDK Platform 36 e Build Tools 36.0.0
-- Gradle 8.11.1 instalado no ambiente
+- Full-screen browser with multiple tabs, tab overview, and URL entry.
+- Balanced and advanced ad filtering, with verification and anti-bot pages allowed to load.
+- Smart download offers for media detected by the browser, with link, filename, size, and session information available before starting a transfer.
+- HTTP/HTTPS links can open directly in ReiVex. Shared links from other apps can be sent to the browser or download queue.
 
-O projeto Android independente fica em `android/`. O repositório não inclui Gradle Wrapper; os comandos abaixo usam a instalação local de Gradle.
+## Downloads
 
-## Compilar
+- Persistent queue with pause, resume, retry, and restart.
+- Direct files, HLS, and DASH support, plus configurable Wi-Fi use, concurrent transfers, connection parts, and buffer size.
+- Per-link cookies and authentication details are stored encrypted with an Android Keystore key.
+- Downloads are saved to `Download/ReiVex` by default and can use an Android folder grant when selected.
 
-Para gerar o APK release:
+ReiVex does not include the ReiAnix library, scanner, AniList account, or local anime catalog. Downloaded media is kept in ReiVex's own queue and Android's Downloads storage.
+
+## Build
+
+The standalone Android project is in `android/`. It uses JDK 17, Android SDK Platform 36, and Gradle 8.11.1. Build a debug APK with:
 
 ```bash
-gradle -p android --no-daemon :app:assembleRelease
+gradle -p android --no-daemon :app:assembleDebug
 ```
 
-Para compilar o Kotlin de release e executar os testes unitários locais:
+Release signing is configured separately for ReiVex. The `REIVEX_ANDROID_*` secrets and expected certificate fingerprint belong to this repository and must be set from a ReiVex-owned signing key. ReiAnix signing secrets and key material are not used.
 
-```bash
-gradle -p android --no-daemon :app:compileReleaseKotlin
-```
+## License
 
-O workflow oficial **Build ReiAnix Android APK** compila o APK diretamente por Gradle, valida o Manifest, as classes nativas no DEX, o contrato SQLite v29 e a ausência de payloads de runtimes não nativos. O asset comprimido `android/app/src/main/assets/native-sqlite-contract-v29.json.gz` é a origem versionada do contrato SQLite utilizado pelo aplicativo.
-
-## Aplicativo Android
-
-O launcher é `MainActivity : ComponentActivity()`; `ReiAnixApplication : Application()` mantém os serviços e o bootstrap nativos. As telas são Compose, a persistência usa o SQLite canônico e a reprodução local usa Media3.
-
-O app descobre vídeos por MediaStore, pela pasta escolhida via Storage Access Framework (SAF) ou pelo acesso amplo ao armazenamento compartilhado quando autorizado pelo usuário. O acesso a uma pasta pode ser concedido ou revogado nas Configurações do Android; o app não solicita acesso a contatos, SMS, localização, câmera, microfone, Gmail ou Drive.
-
-O player inclui retomada de progresso, velocidade de 0,5x a 2x, ajuste de imagem, autoplay do próximo episódio e timer de sono. A compatibilidade com arquivos, codecs e permissões reais deve ser validada no dispositivo Android de destino.
-
-## Login Google opcional
-
-O login Android usa Credential Manager. O workflow de release aceita o Web Client ID público pela variável de repositório `REIANIX_GOOGLE_WEB_CLIENT_ID` (ou secret com o mesmo nome). Não armazene client secrets ou tokens no repositório ou no APK. Sem o identificador, o aplicativo permanece compilável e informa que o login precisa ser configurado.
-
-## Privacidade e dados
-
-O catálogo, as preferências, o progresso e o cache local são mantidos no armazenamento privado do aplicativo. Os vídeos locais não são enviados para servidores; as solicitações de metadados/capas usam os serviços correspondentes.
-
-## Licença
-
-O ReiAnix é distribuído sob a Apache License 2.0. Consulte [LICENSE](LICENSE) para os termos completos.
-
-Copyright © 2026 Reinan Santos.
+ReiVex uses the Apache License 2.0. See [LICENSE](LICENSE).

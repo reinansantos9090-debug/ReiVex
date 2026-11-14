@@ -1,4 +1,4 @@
-name: Build ReiAnix Android APK
+name: Build ReiVex Android APK
 
 on:
   push:
@@ -7,17 +7,16 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # v2 isolates new PR runs from historical runs stuck in GitHub Actions finalization.
-  group: ${{ github.workflow }}-${{ github.ref }}-v2
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -34,431 +33,88 @@ jobs:
           packages: "platform-tools platforms;android-36 build-tools;36.0.0"
           accept-android-sdk-licenses: true
 
-      - name: Set up standalone Gradle
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
 
-      - name: Validate canonical SQLite v29 runtime contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          contract="android/app/src/main/assets/native-sqlite-contract-v29.json.gz"
-          test -s "$contract"
-          gzip -dc "$contract" | jq -e '.schema_version == 29 and (.tables | length == 14) and (.table_sql | length == 14)' >/dev/null
-          echo "Canonical SQLite v29 runtime contract is valid."
-      - name: Validate JSON configuration
-        shell: bash
-        run: |
-          set -euo pipefail
-          while IFS= read -r -d '' file; do
-            jq empty "$file"
-            echo "Valid JSON: $file"
-          done < <(find . -path './.git' -prune -o -path './build' -prune -o -type f -name '*.json' -print0)
-
-      - name: Configure optional public Google client ID
-        shell: bash
-        env:
-          REIANIX_GOOGLE_WEB_CLIENT_ID: ${{ vars.REIANIX_GOOGLE_WEB_CLIENT_ID || secrets.REIANIX_GOOGLE_WEB_CLIENT_ID || vars[format('{0}{1}', 'REI', 'FLIX_GOOGLE_WEB_CLIENT_ID')] || secrets[format('{0}{1}', 'REI', 'FLIX_GOOGLE_WEB_CLIENT_ID')] }}
-        run: |
-          set -euo pipefail
-          strings_file="android/app/src/main/res/values/strings.xml"
-          cp "$strings_file" build-strings-source.xml
-          client_id="${REIANIX_GOOGLE_WEB_CLIENT_ID:-}"
-          if [[ -n "$client_id" && ! "$client_id" =~ ^[0-9]+-[a-z0-9-]+\.apps\.googleusercontent\.com$ ]]; then
-            echo "REIANIX_GOOGLE_WEB_CLIENT_ID must be a valid public Google Web client ID."
-            exit 1
-          fi
-          sed -i -E "s#<string name=\"reianix_google_web_client_id\">[^<]*</string>#<string name=\"reianix_google_web_client_id\">$client_id</string>#" "$strings_file"
-          if [[ -n "$client_id" ]]; then
-            echo "GOOGLE_WEB_CLIENT_ID=validated"
-          else
-            echo "GOOGLE_WEB_CLIENT_ID missing; login will show configuration required."
-          fi
-
-      - name: Validate native Kotlin entry point and repository integrity
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -s android/settings.gradle.kts
-          test -s android/build.gradle.kts
-          test -s android/app/build.gradle.kts
-          test -s android/app/src/main/AndroidManifest.xml
-          test -s android/app/src/main/res/values/colors.xml
-          test -s android/app/src/main/res/drawable/ic_launcher_foreground.xml
-          test -s android/app/src/main/assets/native-sqlite-contract-v29.json.gz
-          test -s android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
-          test -s android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
-          grep -Fq 'android:icon="@mipmap/ic_launcher"' android/app/src/main/AndroidManifest.xml
-          grep -Fq 'android:roundIcon="@mipmap/ic_launcher_round"' android/app/src/main/AndroidManifest.xml
-          test -s android/app/src/main/kotlin/com/reianix/reianix_local/MainActivity.kt
-          test -s android/app/src/main/kotlin/com/reianix/reianix_local/ReiAnixApplication.kt
-          test ! -e main.py
-          test ! -e app_config.py
-          test ! -e requirements.txt
-          test ! -e pyproject.toml
-          if find . -path './.git' -prune -o -path './build' -prune -o -type f \( -name '*.py' -o -name '*.pyc' \) -print | grep -q .; then
-            echo "Unexpected Python source/bytecode remains in the repository."
-            exit 1
-          fi
-          test -n "$(find android/app/src/main/kotlin -type f -name '*.kt' -print -quit)"
-          grep -Fq 'android:name="com.reianix.reianix_local.MainActivity"' android/app/src/main/AndroidManifest.xml
-          git diff --check
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-
-      # Never make the official private signing key available to PR code.
-      - name: Reject releases dispatched from non-main branches
-        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
-        shell: bash
-        run: |
-          echo "::error::Official APK releases must be dispatched from the main branch."
-          exit 1
-
-      - name: Configure stable Android release signing
+      - name: Configure ReiVex release signing
         if: github.event_name != 'pull_request'
-        shell: bash
         env:
-          REIANIX_ANDROID_KEYSTORE_B64: ${{ secrets.REIANIX_ANDROID_KEYSTORE_B64 || secrets[format('{0}{1}', 'REI', 'FLIX_ANDROID_KEYSTORE_B64')] }}
-          REIANIX_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.REIANIX_ANDROID_KEYSTORE_PASSWORD || secrets[format('{0}{1}', 'REI', 'FLIX_ANDROID_KEYSTORE_PASSWORD')] }}
-          REIANIX_ANDROID_KEY_PASSWORD: ${{ secrets.REIANIX_ANDROID_KEY_PASSWORD || secrets[format('{0}{1}', 'REI', 'FLIX_ANDROID_KEY_PASSWORD')] }}
-          REIANIX_ANDROID_KEY_ALIAS: ${{ secrets.REIANIX_ANDROID_KEY_ALIAS || secrets[format('{0}{1}', 'REI', 'FLIX_ANDROID_KEY_ALIAS')] }}
-          REIANIX_ANDROID_EXPECTED_CERT_SHA256: ${{ vars.REIANIX_ANDROID_EXPECTED_CERT_SHA256 || vars[format('{0}{1}', 'REI', 'FLIX_ANDROID_EXPECTED_CERT_SHA256')] }}
+          REIVEX_ANDROID_KEYSTORE_B64: ${{ secrets.REIVEX_ANDROID_KEYSTORE_B64 }}
+          REIVEX_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.REIVEX_ANDROID_KEYSTORE_PASSWORD }}
+          REIVEX_ANDROID_KEY_PASSWORD: ${{ secrets.REIVEX_ANDROID_KEY_PASSWORD }}
+          REIVEX_ANDROID_KEY_ALIAS: ${{ secrets.REIVEX_ANDROID_KEY_ALIAS }}
+          REIVEX_ANDROID_EXPECTED_CERT_SHA256: ${{ vars.REIVEX_ANDROID_EXPECTED_CERT_SHA256 }}
+        shell: bash
         run: |
           set -euo pipefail
-          umask 077
-          for variable in REIANIX_ANDROID_KEYSTORE_B64 REIANIX_ANDROID_KEYSTORE_PASSWORD REIANIX_ANDROID_KEY_PASSWORD REIANIX_ANDROID_KEY_ALIAS REIANIX_ANDROID_EXPECTED_CERT_SHA256; do
-            if [[ -z "${!variable:-}" ]]; then
-              echo "::error::Missing release signing configuration: $variable. See docs/RELEASE_SIGNING_SETUP.md."
+          for name in REIVEX_ANDROID_KEYSTORE_B64 REIVEX_ANDROID_KEYSTORE_PASSWORD REIVEX_ANDROID_KEY_PASSWORD REIVEX_ANDROID_KEY_ALIAS REIVEX_ANDROID_EXPECTED_CERT_SHA256; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing ReiVex-specific signing value: $name"
               exit 1
             fi
           done
-          expected="${REIANIX_ANDROID_EXPECTED_CERT_SHA256,,}"
-          if [[ ! "$expected" =~ ^[0-9a-f]{64}$ ]]; then
-            echo "::error::REIANIX_ANDROID_EXPECTED_CERT_SHA256 must be a SHA-256 hex fingerprint."
-            exit 1
-          fi
-          signing_dir="$(mktemp -d "$RUNNER_TEMP/reianix-signing.XXXXXX")"
-          keystore="$signing_dir/reianix-release.jks"
-          printf '%s' "$REIANIX_ANDROID_KEYSTORE_B64" | base64 --decode > "$keystore"
-          test -s "$keystore"
-          actual="$(keytool -exportcert -rfc -keystore "$keystore" -alias "$REIANIX_ANDROID_KEY_ALIAS" -storepass:env REIANIX_ANDROID_KEYSTORE_PASSWORD |
-            openssl x509 -noout -fingerprint -sha256 |
-            cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          signing_dir="$RUNNER_TEMP/reivex-signing"
+          mkdir -p "$signing_dir"
+          keystore="$signing_dir/reivex-release.jks"
+          printf '%s' "$REIVEX_ANDROID_KEYSTORE_B64" | base64 --decode > "$keystore"
+          actual="$(keytool -exportcert -rfc -keystore "$keystore" -alias "$REIVEX_ANDROID_KEY_ALIAS" -storepass:env REIVEX_ANDROID_KEYSTORE_PASSWORD | openssl x509 -noout -fingerprint -sha256 | sed 's/.*=//;s/://g' | tr '[:upper:]' '[:lower:]')"
+          expected="$(printf '%s' "$REIVEX_ANDROID_EXPECTED_CERT_SHA256" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
           if [[ "$actual" != "$expected" ]]; then
-            echo "::error::The configured keystore does not match the pinned release certificate; refusing to rotate the app identity."
+            echo "The ReiVex signing certificate does not match REIVEX_ANDROID_EXPECTED_CERT_SHA256."
             exit 1
           fi
           {
-            echo "REIANIX_ANDROID_KEYSTORE_PATH=$keystore"
-            echo "REIANIX_ANDROID_KEYSTORE_PASSWORD=$REIANIX_ANDROID_KEYSTORE_PASSWORD"
-            echo "REIANIX_ANDROID_KEY_PASSWORD=$REIANIX_ANDROID_KEY_PASSWORD"
-            echo "REIANIX_ANDROID_KEY_ALIAS=$REIANIX_ANDROID_KEY_ALIAS"
-            echo "REIANIX_SIGNING_MODE=stable"
+            echo "REIVEX_ANDROID_KEYSTORE_PATH=$keystore"
+            echo "REIVEX_ANDROID_KEYSTORE_PASSWORD=$REIVEX_ANDROID_KEYSTORE_PASSWORD"
+            echo "REIVEX_ANDROID_KEY_PASSWORD=$REIVEX_ANDROID_KEY_PASSWORD"
+            echo "REIVEX_ANDROID_KEY_ALIAS=$REIVEX_ANDROID_KEY_ALIAS"
+            echo "REIVEX_ANDROID_EXPECTED_CERT_SHA256=$REIVEX_ANDROID_EXPECTED_CERT_SHA256"
+            echo "REIVEX_SIGNING_MODE=stable"
           } >> "$GITHUB_ENV"
-          echo "Stable release certificate verified against pinned SHA-256."
 
-      - name: Configure isolated PR preview signing
+      - name: Enable temporary PR preview signing
         if: github.event_name == 'pull_request'
+        run: echo "REIVEX_ALLOW_DEBUG_RELEASE_FOR_PR=true" >> "$GITHUB_ENV"
+
+      - name: Build ReiVex release APK
+        run: >-
+          gradle -p android --no-daemon :app:assembleRelease
+          -PreivexBuildNumber="$GITHUB_RUN_NUMBER"
+          -PreivexBuildVersion="0.1.${GITHUB_RUN_NUMBER}"
+
+      - name: Verify ReiVex package and launcher
         shell: bash
         run: |
           set -euo pipefail
-          {
-            echo "REIANIX_ALLOW_DEBUG_RELEASE_FOR_PR=true"
-            echo "REIANIX_SIGNING_MODE=pr-debug-preview"
-          } >> "$GITHUB_ENV"
-          echo "::notice::This PR APK is debug-signed for testing only and cannot update a stable-signed official installation."
-
-      - name: Write native build identity
-        shell: bash
-        env:
-          REIANIX_BUILD_SHA: ${{ github.sha }}
-          REIANIX_BUILD_NUMBER: ${{ github.run_number }}
-          REIANIX_BUILD_BRANCH: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          mkdir -p build
-          jq -n \
-            --arg commit_sha "$REIANIX_BUILD_SHA" \
-            --arg build_number "$REIANIX_BUILD_NUMBER" \
-            --arg build_version "0.2.1" \
-            --arg branch "$REIANIX_BUILD_BRANCH" \
-            --arg timestamp_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{
-              commit_sha: $commit_sha,
-              build_number: $build_number,
-              build_version: $build_version,
-              branch: $branch,
-              timestamp_utc: $timestamp_utc,
-              android_runtime: "native-kotlin-compose",
-              android_entrypoint: "com.reianix.reianix_local.MainActivity",
-              python_runtime_packaged: false,
-              flet_runtime_packaged: false,
-              flutter_runtime_packaged: false,
-              main_py_packaged: false
-            }' > build/reianix-build-identity.json
-          test -s build/reianix-build-identity.json
-
-      - name: Build native Android release APK
-        shell: bash
-        env:
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=4"
-        run: |
-          set -euo pipefail
-          gradle -p android --no-daemon --console=plain --stacktrace \
-            -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
-            -PreianixBuildVersion="0.2.1" \
-            :app:assembleRelease
-
-      - name: Explicitly verify release Kotlin compilation
-        shell: bash
-        env:
-          GRADLE_OPTS: "-Dorg.gradle.caching=true -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=4"
-        run: |
-          set -euo pipefail
-          gradle -p android --no-daemon --console=plain \
-            -PreianixBuildNumber="$GITHUB_RUN_NUMBER" \
-            -PreianixBuildVersion="0.2.1" \
-            :app:compileReleaseKotlin
-
-      - name: Locate APK
-        id: apk
-        shell: bash
-        run: |
-          set -euo pipefail
-          source_apk="android/app/build/outputs/apk/release/app-release.apk"
-          test -s "$source_apk"
-          cp "$source_apk" build/ReiAnix.apk
-          test -s build/ReiAnix.apk
-          file build/ReiAnix.apk
-          echo "path=build/ReiAnix.apk" >> "$GITHUB_OUTPUT"
-
-      - name: Verify native APK payload and Android package metadata
-        shell: bash
-        run: |
-          set -euo pipefail
-          apk="${{ steps.apk.outputs.path }}"
-          aapt2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
-          badging="$("$aapt2" dump badging "$apk")"
-          echo "$badging" | grep -Fq "package: name='com.reiflix.reiflix_local'"
-          echo "$badging" | grep -Fq "versionCode='$GITHUB_RUN_NUMBER'"
-          echo "$badging" | grep -Fq "versionName='0.2.1'"
-          echo "$badging" | grep -Fq "targetSdkVersion:'36'"
-          echo "$badging" | grep -Fq "application-icon"
-          "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.MANAGE_EXTERNAL_STORAGE"
-          "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.READ_MEDIA_VIDEO"
-          "$aapt2" dump permissions "$apk" | grep -Fq "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
-
-          archive_list="$(unzip -Z1 "$apk")"
-          contract_asset='assets/native-sqlite-contract-v29.json'
-          if ! grep -Fxq "$contract_asset" <<< "$archive_list"; then
-            echo "ERROR: packaged APK is missing $contract_asset"
-            echo "SQLite-related entries actually present in the APK:"
-            grep -Ei '(^assets/|sqlite|contract|\.gz$)' <<< "$archive_list" || true
-            exit 1
+          apk="android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$apk"
+          badging="$("$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk")"
+          echo "$badging" | grep -Fq "package: name='com.reivex.browser'"
+          echo "$badging" | grep -Fq "application-label:'ReiVex'"
+          grep -Fq 'android:name="com.reivex.browser.downloads.DownloadBrowserActivity"' android/app/src/main/AndroidManifest.xml
+          grep -Fq 'android.intent.category.LAUNCHER' android/app/src/main/AndroidManifest.xml
+          if [[ "${GITHUB_EVENT_NAME}" != "pull_request" ]]; then
+            signer="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk")"
+            actual="$(printf '%s\n' "$signer" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1 | tr '[:upper:]' '[:lower:]')"
+            expected="$(printf '%s' "$REIVEX_ANDROID_EXPECTED_CERT_SHA256" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+            test -n "$actual" && test "$actual" = "$expected"
           fi
-          packaged_contract_json="$RUNNER_TEMP/packaged-native-sqlite-contract-v29.json"
-          unzip -p "$apk" "$contract_asset" > "$packaged_contract_json"
-          if ! jq -e '.schema_version == 29 and (.tables | length == 14) and (.table_sql | length == 14)' "$packaged_contract_json" >/dev/null; then
-            echo "ERROR: the packaged SQLite contract did not satisfy the schema-v29 contract."
-            jq -r '"schema_version=\(.schema_version // "missing") tables=\((.tables // []) | length) table_sql=\((.table_sql // {}) | length)"' "$packaged_contract_json" || true
-            exit 1
-          fi
-          echo "PACKAGED_SQLITE_CONTRACT=PASS bytes=$(stat -c '%s' "$packaged_contract_json") tables=$(jq '.tables | length' "$packaged_contract_json")"
-          if grep -Eiq '(^|/)(__pycache__/|[^/]+\.py[co]$|assets/app\.zip$|assets/flutter/|lib[^/]*(python|flutter)|seriouspython)' <<< "$archive_list"; then
-            echo "The APK contains a forbidden Python/Flet/Flutter payload:"
-            grep -Ei '(^|/)(__pycache__/|[^/]+\.py[co]$|assets/app\.zip$|assets/flutter/|lib[^/]*(python|flutter)|seriouspython)' <<< "$archive_list"
-            exit 1
-          fi
+          echo "Verified package com.reivex.browser and ReiVex launcher."
 
-          dex_files="$(grep -E '^classes([0-9]+)?\.dex$' <<< "$archive_list" || true)"
-          test -n "$dex_files"
-          for class_name in \
-            "com/reianix/reianix_local/MainActivity" \
-            "com/reianix/reianix_local/ReiAnixApplication" \
-            "com/reianix/reianix_local/NativePlayerActivity"; do
-            found=0
-            while IFS= read -r dex; do
-              if unzip -p "$apk" "$dex" | strings | grep -F "$class_name" >/dev/null; then
-                found=1
-                break
-              fi
-            done <<< "$dex_files"
-            if [[ "$found" -ne 1 ]]; then
-              echo "Required native class missing from DEX: $class_name"
-              exit 1
-            fi
-          done
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiVex-APK-${{ github.run_number }}
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
 
-      - name: Check embedded ad-filter snapshots in the actual APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          apk="${{ steps.apk.outputs.path }}"
-          archive_list="$(unzip -Z1 "$apk")"
-          for id in easylist mobile portuguese easyprivacy annoyances; do
-            asset="assets/browser-filter/${id}.filterdata"
-            if ! grep -Fxq "$asset" <<< "$archive_list"; then
-              echo "::error::APK missing $asset"
-              exit 1
-            fi
-            unpacked="$RUNNER_TEMP/${id}.filterdata"
-            unzip -p "$apk" "$asset" > "$unpacked"
-            gzip -t "$unpacked"
-          done
-          echo "BROWSER_FILTER_SNAPSHOTS=PASS (all 5 archives preserved and readable)"
-
-      - name: Print and publish APK SHA-256
-        shell: bash
-        run: |
-          set -euo pipefail
-          (cd build && sha256sum ReiAnix.apk) | tee build/ReiAnix.apk.sha256
-          aapt2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
-          {
-            cat build/reianix-build-identity.json
-            echo
-            echo "signing_mode=${REIANIX_SIGNING_MODE:-unknown}"
-            "$aapt2" dump badging build/ReiAnix.apk | grep -E "package: name=|versionCode=|versionName=|targetSdkVersion"
-          } | tee build/reianix-release-metadata.txt
-          test -s build/reianix-release-metadata.txt
-
-      - name: Verify APK signing certificate and identity
-        shell: bash
-        env:
-          REIANIX_ANDROID_EXPECTED_CERT_SHA256: ${{ vars.REIANIX_ANDROID_EXPECTED_CERT_SHA256 || vars[format('{0}{1}', 'REI', 'FLIX_ANDROID_EXPECTED_CERT_SHA256')] }}
-        run: |
-          set -euo pipefail
-          signer_info="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs build/ReiAnix.apk)"
-          echo "$signer_info" | grep -E '^Verifies|^Number of signers:|^Signer #1 certificate DN:|^Signer #1 certificate SHA-256 digest:'
-          fingerprint="$(printf '%s\n' "$signer_info" |
-            sed -nE 's/^Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]+)$/\1/p' |
-            tr '[:upper:]' '[:lower:]')"
-          if [[ ! "$fingerprint" =~ ^[0-9a-f]{64}$ ]]; then
-            echo "::error::Could not read a valid APK signing certificate fingerprint."
-            exit 1
-          fi
-          if [[ "$REIANIX_SIGNING_MODE" == "stable" ]]; then
-            if [[ "$fingerprint" != "${REIANIX_ANDROID_EXPECTED_CERT_SHA256,,}" ]] ||
-               grep -Fq 'CN=Android Debug' <<< "$signer_info"; then
-              echo "::error::Release APK is not signed with the pinned official certificate."
-              exit 1
-            fi
-          elif [[ "$REIANIX_SIGNING_MODE" == "pr-debug-preview" && "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
-            if ! grep -Fq 'CN=Android Debug' <<< "$signer_info"; then
-              echo "::error::PR preview APK did not use the expected debug signing identity."
-              exit 1
-            fi
-          else
-            echo "::error::Unrecognized signing mode; refusing to publish an APK."
-            exit 1
-          fi
-          echo "certificate_sha256=$fingerprint" >> build/reianix-release-metadata.txt
-          echo "APK_SIGNING_IDENTITY=verified mode=$REIANIX_SIGNING_MODE"
-
-      - name: Final Git integrity check
+      - name: Remove temporary signing key
         if: always()
         shell: bash
         run: |
-          set -euo pipefail
-          if [[ -f build-strings-source.xml ]]; then
-            cp build-strings-source.xml android/app/src/main/res/values/strings.xml
-            rm -f build-strings-source.xml
-          fi
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          git diff --check
-          status="$(git status --porcelain)"
-          if [[ -n "$status" ]]; then
-            echo "Unexpected working-tree changes:"
-            printf '%s\n' "$status"
-            git diff --stat
-            exit 1
-          fi
-          test -s build/ReiAnix.apk
-          test -s build/reianix-build-identity.json
-
-      - name: Write Portuguese install instructions
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat > build/LEIA-ANTES-DE-INSTALAR.txt <<'EOF'
-          REIANIX — COMO INSTALAR NO ANDROID
-
-          1. Toque diretamente em ReiAnix.apk e escolha Instalar.
-          2. Se o Android bloquear, permita “Instalar apps desconhecidos” para o gerenciador de arquivos e tente novamente.
-          3. ReiAnix.apk.sha256 é somente um checksum de verificação; não instale esse arquivo.
-          4. Se o Android mostrar “App não instalado” ou “Pacote inválido”, envie a mensagem exata.
-          EOF
-          test -s build/LEIA-ANTES-DE-INSTALAR.txt
-
-      - name: Create downloadable APK ZIP
-        shell: bash
-        run: |
-          set -euo pipefail
-          zip -j -9 -X build/ReiAnix-apk.zip build/ReiAnix.apk build/ReiAnix.apk.sha256 build/LEIA-ANTES-DE-INSTALAR.txt
-          unzip -tq build/ReiAnix-apk.zip
-          test -s build/ReiAnix-apk.zip
-          unzip -Z1 build/ReiAnix-apk.zip | grep -Fxq 'ReiAnix.apk'
-          unzip -Z1 build/ReiAnix-apk.zip | grep -Fxq 'ReiAnix.apk.sha256'
-          unzip -Z1 build/ReiAnix-apk.zip | grep -Fxq 'LEIA-ANTES-DE-INSTALAR.txt'
-          apk_bytes="$(stat -c '%s' build/ReiAnix.apk)"
-          zip_bytes="$(stat -c '%s' build/ReiAnix-apk.zip)"
-          printf 'APK_SIZE_BYTES=%s\nZIP_SIZE_BYTES=%s\n' "$apk_bytes" "$zip_bytes"
-          test "$zip_bytes" -le "$((apk_bytes + 1048576))"
-
-      - name: Publish APK and ZIP to rolling GitHub Release
-        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: reianix-ci-latest
-        shell: bash
-        run: |
-          set -euo pipefail
-          release_args=(
-            --repo "$GITHUB_REPOSITORY"
-            --title "ReiAnix CI — latest"
-            --notes "Native Kotlin/Compose APK from commit $GITHUB_SHA."
-            --latest=false
-          )
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$RELEASE_TAG" "${release_args[@]}"
-            gh release upload "$RELEASE_TAG" \
-              build/ReiAnix.apk build/ReiAnix-apk.zip build/ReiAnix.apk.sha256 \
-              build/LEIA-ANTES-DE-INSTALAR.txt build/reianix-release-metadata.txt \
-              build/reianix-build-identity.json --clobber --repo "$GITHUB_REPOSITORY"
-          else
-            gh release create "$RELEASE_TAG" \
-              build/ReiAnix.apk build/ReiAnix-apk.zip build/ReiAnix.apk.sha256 \
-              build/LEIA-ANTES-DE-INSTALAR.txt build/reianix-release-metadata.txt \
-              build/reianix-build-identity.json "${release_args[@]}" --target "$GITHUB_SHA"
-          fi
-
-      - name: Upload APK to Actions run
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ReiAnix-apk-instalacao-direta-${{ github.run_number }}
-          path: |
-            build/ReiAnix.apk
-            build/ReiAnix.apk.sha256
-            build/LEIA-ANTES-DE-INSTALAR.txt
-            build/reianix-release-metadata.txt
-            build/reianix-build-identity.json
-          retention-days: 1
-          if-no-files-found: error
-
-
-      - name: Upload APK ZIP to Actions run
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ReiAnix-ZIP-extraia-primeiro-${{ github.run_number }}
-          path: build/ReiAnix-apk.zip
-          retention-days: 1
-          if-no-files-found: error
-
-      - name: Remove temporary private signing keystore
-        if: always()
-        shell: bash
-        run: |
-          if [[ -n "${REIANIX_ANDROID_KEYSTORE_PATH:-}" ]]; then
-            rm -f -- "$REIANIX_ANDROID_KEYSTORE_PATH"
+          if [[ -n "${REIVEX_ANDROID_KEYSTORE_PATH:-}" ]]; then
+            rm -f -- "$REIVEX_ANDROID_KEYSTORE_PATH"
           fi

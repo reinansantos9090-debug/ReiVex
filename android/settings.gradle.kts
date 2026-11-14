@@ -1,6 +1,6 @@
 pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
 dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
-rootProject.name = "ReiAnixNative"
+rootProject.name = "ReiVexNative"
 include(":app")
 
 include(":browser-filter")
