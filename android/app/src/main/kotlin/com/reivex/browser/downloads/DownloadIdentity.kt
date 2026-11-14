@@ -83,12 +83,16 @@ object DownloadIdentity {
     }
     /** A sharing app may supply a series/episode title while its CDN URL is only index.m3u8.
      * Do not fabricate an episode number when the sender provides no episode metadata. */
-    fun suggestedName(sharedTitle: String, url: String, providedName: String): String {
+    fun suggestedName(
+        sharedTitle: String, url: String, providedName: String, refererUrl: String = "",
+    ): String {
         if (providedName.isNotBlank() && !isGenericMediaName(providedName)) return providedName
         val fromContext=DownloadResourceIdentity.contextualEpisodeName(url)
         val episode=episodeTitleFromPage(sharedTitle,url).takeIf {
             episodeMarker.containsMatchIn(it) && usefulPageTitle(it)
-        } ?: fromContext
+        } ?: fromContext ?: episodeTitleFromPage("",refererUrl).takeIf {
+            episodeMarker.containsMatchIn(it) && usefulPageTitle(it)
+        }
         if (!episode.isNullOrBlank()) {
             val normalized=episode.replace(
                 Regex("""(?i)\b(?:epis[oó]dio|episode|ep)[\s._-]*(\d{1,4})\b"""),
@@ -110,11 +114,9 @@ object DownloadIdentity {
             }.joinToString("").trim().take(180)
             if(clean.isNotBlank())return clean+".mp4"
         }
-        DownloadResourceIdentity.bestName(null,url,null)?.let { return it }
-        return providedName.ifBlank {
-            runCatching { android.webkit.URLUtil.guessFileName(url,null,null) }
-                .getOrDefault("episodio.mp4")
-        }
+        DownloadResourceIdentity.bestName(null,url,null)?.takeUnless(::isGenericMediaName)
+            ?.let { return it }
+        return providedName.takeIf {it.isNotBlank() && !isGenericMediaName(it)} ?: "Episódio.mp4"
     }
 
     fun title(value: String): String {
