@@ -1,20 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Monochrome notification-size version of the official ReiVex ribbon R.
-     Android tints small icons; the full-color launcher artwork is provided as
-     the large icon by DownloadScheduling. Keep generous margins at 24dp. -->
+<!--
+    Clear, upright ReiVex R for Android's monochrome notification status icon.
+    One solid silhouette with a spacious counter stays legible at 16-24dp.
+    The colorful official launcher artwork remains the notification large icon.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
     <path
-        android:fillColor="#FFFFFFFF"
+        android:fillColor="@android:color/white"
         android:fillType="evenOdd"
-        android:pathData="M5.3,10.1 L6.5,7.2 C7.2,5.5 8.6,4.7 10.4,4.7 L15.9,4.7 C19.1,4.7 21,6.9 21,9.8 C21,12.8 19.4,14.7 16.7,15.1 L14.8,12.6 C16.8,12.6 18,11.7 18,10.1 C18,8.5 17.1,7.8 15.8,7.8 L8.3,7.8 L7.5,10.1 Z M8.95,6.5 a0.42,0.42 0,1 0,0.84 0 a0.42,0.42 0,1 0,-0.84 0 Z M10.35,6.5 a0.42,0.42 0,1 0,0.84 0 a0.42,0.42 0,1 0,-0.84 0 Z M11.75,6.5 a0.42,0.42 0,1 0,0.84 0 a0.42,0.42 0,1 0,-0.84 0 Z" />
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M7.1,11.2 L10.25,14.15 L7.65,20.1 L4.1,20.1 Z" />
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M10.05,11.2 L13.75,11.2 L20.1,20.1 L16.1,20.1 Z" />
+        android:pathData="M5.15,3.8 H13.6 C17.8,3.8 20.05,5.95 20.05,9.4 C20.05,12.05 18.5,13.95 16.1,14.6 L20.5,20.2 H15.95 L12,15 H8.95 V20.2 H5.15 Z M8.95,7.15 V11.85 H13.35 C15.18,11.85 16.11,11.05 16.11,9.51 C16.11,7.94 15.18,7.15 13.35,7.15 Z" />
 </vector>
