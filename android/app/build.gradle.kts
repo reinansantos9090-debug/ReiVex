@@ -7,6 +7,9 @@ plugins {
 android {
     namespace = "com.reivex.browser"
     compileSdk = 36
+    // Match the native ad blocker module so AGP can strip non-runtime DWARF
+    // debug symbols from packaged .so files, instead of copying them intact.
+    ndkVersion = "28.0.13004108"
 
     buildFeatures {
         buildConfig = true
