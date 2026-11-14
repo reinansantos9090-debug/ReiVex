@@ -9,6 +9,7 @@ grep -Fq 'namespace = "com.reivex.browser"' "$gradle"
 grep -Fq 'applicationId = "com.reivex.browser"' "$gradle"
 grep -Fq 'com.reivex.browser.ReiVexApplication' "$manifest"
 grep -Fq 'com.reivex.browser.downloads.DownloadBrowserActivity' "$manifest"
+grep -Fq 'android:label="@string/app_name"' "$manifest"
 grep -Fq 'android.intent.category.LAUNCHER' "$manifest"
 
 if find android/app/src/main/kotlin -type f -print0 |
