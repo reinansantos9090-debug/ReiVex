@@ -174,7 +174,19 @@ class DownloadEngine(private val context: Context) {
             val serverHash=if(resume==0L && (code==200 || range?.end?.plus(1)==range?.total)) serverHash(connection) else null
             val disposition=connection.getHeaderField("Content-Disposition")
             val resolvedUrl=connection.url.toString()
+            val responseFileName=DownloadResourceIdentity.bestName(disposition,resolvedUrl,contentType)
+                ?: DownloadResourceIdentity.bestName(null,secret.getString("url"),contentType)
             store.mutate(id) {
+                // Keep independently verified HTTP file identity so a bogus
+                // page-derived '.mp4' can be corrected after inspecting bytes.
+                // Do not treat an attachment as a video because of its page title.
+                if(DownloadFileKind.isOrdinaryFileName(responseFileName))
+                    it.put("responseFileName",responseFileName)
+                else it.remove("responseFileName")
+                if(DownloadFileKind.isOrdinaryMime(contentType)) {
+                    it.put("responseMime",contentType)
+                    it.put("mime",contentType)
+                } else it.remove("responseMime")
                 if(it.optBoolean("automaticName") && !it.has("playerCapture")) {
                     val candidate=DownloadResourceIdentity.bestName(disposition,
                         resolvedUrl,contentType)
@@ -382,14 +394,28 @@ class DownloadEngine(private val context: Context) {
                 DownloadContainerDetector.outputName(beforePublication.name,"ts")
             else beforePublication.name
         }
-        val actualContainer=runCatching {
-            target.inputStream().use(DownloadContainerDetector::sniff)
-        }.getOrNull()
-        val originalExtension=originalName.substringAfterLast('.', "").lowercase()
+        val header=runCatching {
+            target.inputStream().use { input ->
+                val buffer=ByteArray(4096)
+                val count=input.read(buffer)
+                if(count>0) buffer.copyOf(count) else byteArrayOf()
+            }
+        }.getOrDefault(byteArrayOf())
+        val actualContainer=DownloadContainerDetector.sniff(header)
+        val correctedOrdinaryName=if(actualContainer==null) DownloadFileKind.recoveredName(
+            originalName,beforePublication.json.optString("responseFileName"),
+            beforePublication.json.optString("responseMime"),header)
+            else null
+        val verifiedOriginalName=correctedOrdinaryName ?: originalName
+        val originalExtension=verifiedOriginalName.substringAfterLast('.', "").lowercase()
         // A .bin response may contain valid MP4/TS/MKV data, but an arbitrary
         // binary is not an episode. Do not publish it as a playable video.
-        if((originalExtension=="bin" || beforePublication.json.optBoolean("sourceWasOpaque")) && actualContainer==null)
-            throw PermanentFailure("O arquivo .bin não contém um formato de vídeo reconhecido; não foi renomeado para MP4.")
+        // Arbitrary binaries are legitimate downloads (APK, ZIP, installers,
+        // archives, etc.). Reject an unknown .bin as video only if it came
+        // from a captured video player, not from an ordinary browser link.
+        if((originalExtension=="bin" || beforePublication.json.optBoolean("sourceWasOpaque")) &&
+            actualContainer==null && beforePublication.json.has("playerCapture"))
+            throw PermanentFailure("A captura do player não contém vídeo reconhecido.")
         // A recognizable ftyp header alone does not make an arbitrary .bin
         // playable. Confirm a genuine video track before publishing as MP4.
         if((originalExtension=="bin" || beforePublication.json.optBoolean("sourceWasOpaque")) && actualContainer?.extension=="mp4") {
@@ -408,10 +434,19 @@ class DownloadEngine(private val context: Context) {
                 throw PermanentFailure("O arquivo .bin possui assinatura MP4, mas não contém vídeo reproduzível.")
         }
         val sourceExtension=actualContainer?.extension ?: originalExtension
-        val sourceMime=actualContainer?.mime ?: beforePublication.mime
+        val sourceMime=actualContainer?.mime ?: correctedOrdinaryName?.let {
+            val ext=DownloadFileKind.extension(it)
+            android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
+                ?: when(ext) {
+                    "apk" -> "application/vnd.android.package-archive"
+                    "zip" -> "application/zip"
+                    "pdf" -> "application/pdf"
+                    else -> null
+                }
+        } ?: beforePublication.mime
         val realSourceName=if(actualContainer!=null && originalExtension!=sourceExtension)
-            DownloadContainerDetector.outputName(originalName,sourceExtension)
-            else originalName
+            DownloadContainerDetector.outputName(verifiedOriginalName,sourceExtension)
+            else verifiedOriginalName
         val needsRemux=sourceExtension in DownloadContainerDetector.convertibleExtensions
         // These expectations apply to EVERY conversion path, including the
         // Media3 fallback. Keep audio present and reject truncated timelines.
@@ -523,6 +558,7 @@ class DownloadEngine(private val context: Context) {
                 savedOriginal.isNotBlank()) {
                 store.mutate(id) {
                     it.put("name",outputName).put("mime",outputMime)
+                    if(correctedOrdinaryName!=null) it.put("serverNameResolved",true)
                     if(didRemux) it.put("remuxSourceName",originalName)
                     else it.remove("remuxSourceName")
                 }
