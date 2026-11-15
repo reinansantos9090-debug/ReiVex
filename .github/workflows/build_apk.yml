@@ -178,13 +178,23 @@ jobs:
           fi
           echo "Verified package com.reivex.browser and ReiVex launcher (mode: $REIVEX_APK_MODE)."
 
-      - name: Upload APK artifact
+      # Publish separate artifacts so Android users can download just the
+      # desired APK instead of a ZIP containing both variants.
+      - name: Upload ReiVex Release APK
+        if: steps.signing_mode.outputs.mode != 'debug_preview'
         uses: actions/upload-artifact@v4
         with:
-          name: ReiVex-${{ steps.signing_mode.outputs.mode == 'release' && 'Release' || 'Preview' }}-APK-${{ github.run_number }}
-          path: |
-            android/app/build/outputs/apk/release/app-release.apk
-            android/app/build/outputs/apk/debug/app-debug.apk
+          name: ReiVex-Release-APK-${{ github.run_number }}
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload ReiVex Debug APK
+        if: github.event_name == 'pull_request' || steps.signing_mode.outputs.mode == 'debug_preview'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReiVex-Debug-APK-${{ github.run_number }}
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
 
