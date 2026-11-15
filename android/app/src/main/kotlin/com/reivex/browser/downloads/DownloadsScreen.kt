@@ -442,7 +442,11 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
             if(referer.isNotBlank())probeHeaders["Referer"]=referer.trim()
             if(user.isNotBlank())probeHeaders["Authorization"]="Basic "+
                 android.util.Base64.encodeToString("$user:$password".toByteArray(),android.util.Base64.NO_WRAP)
-            val inspected=withTimeoutOrNull(8_000) {
+            // Direct and segmented media probes may need a metadata fallback
+            // after a CDN rejects HEAD or Range. Keep the UI alive long enough
+            // to use those cross-provider strategies instead of prematurely
+            // converting a slow response into an unavailable-size result.
+            val inspected=withTimeoutOrNull(20_000) {
                 val sessionHeaders=DownloadSessionHeaders.resolve(context,target,probeHeaders)
                 if(DownloadSignedLinkPolicy.avoidPrefetch(target) &&
                     !hlsHint && !target.substringBefore('?').endsWith(".m3u8",true))
