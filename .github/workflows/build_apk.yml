@@ -146,6 +146,15 @@ jobs:
           -PreivexBuildNumber="$GITHUB_RUN_NUMBER"
           -PreivexBuildVersion="0.1.$GITHUB_RUN_NUMBER"
 
+      - name: Test non-video downloads and existing anime/video filenames
+        if: github.event_name == 'pull_request'
+        run: >-
+          gradle -p android --no-daemon :app:testDebugUnitTest
+          --tests com.reivex.browser.downloads.DownloadOrdinaryFileTest
+          --tests com.reivex.browser.downloads.DownloadIdentitySharedNameTest
+          --tests com.reivex.browser.downloads.DownloadResourceIdentityTest
+          --tests com.reivex.browser.downloads.DownloadContainerDetectorTest
+
       - name: Report APK sizes and included native ABIs
         run: >-
           python3 scripts/report_apk_size.py
