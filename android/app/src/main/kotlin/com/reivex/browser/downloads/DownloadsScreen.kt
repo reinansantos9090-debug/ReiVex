@@ -216,10 +216,10 @@ initialCandidates:List<DownloadSourceSelection.Candidate> = emptyList()) {
                 var menu by remember(item.id) {mutableStateOf(false)}
                 Row(Modifier.fillMaxWidth().heightIn(min=64.dp).clickable {menu=true}.padding(vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
                     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)) {
-                        val parsed=com.reivex.browser.data.media.MediaFilenameParser.parseVideoPath(item.name)
-                        val episode=parsed.episodeNumber
-                        val label=if(episode!=null) "Episódio "+(if(episode%1.0==0.0)episode.toLong().toString() else episode.toString()) else item.name.substringBeforeLast('.',item.name)
-                        Text(label,style=MaterialTheme.typography.bodyMedium,maxLines=1,overflow=TextOverflow.Ellipsis)
+                        // This is a general-purpose download manager, not an
+                        // episode-only list. Show the same exact filename as
+                        // the notification, including its real extension.
+                        Text(item.name,style=MaterialTheme.typography.bodyMedium,maxLines=1,overflow=TextOverflow.Ellipsis)
                         val received=Formatter.formatFileSize(context,item.bytes)
                         val displayTotal=downloadDisplaySize(item)
                         val hlsCount=item.json.optInt("hlsCount")
