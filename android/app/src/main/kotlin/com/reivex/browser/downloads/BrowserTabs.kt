@@ -2,6 +2,7 @@ package com.reivex.browser.downloads
 
 import android.graphics.Bitmap
 import android.os.Bundle
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -11,6 +12,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material3.*
