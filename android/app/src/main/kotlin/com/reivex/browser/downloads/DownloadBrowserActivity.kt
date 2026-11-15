@@ -58,6 +58,12 @@ private data class BrowserDownloadOffer(
     val providerEstimatedSize:Long?=null,
 )
 
+/** HTTP requests never include URL fragments, but player routes may store
+ * quality/chunk metadata there. Match captured headers against the wire URL. */
+private fun mediaRequestKey(url:String):String = runCatching {
+    Uri.parse(url).buildUpon().fragment(null).build().toString()
+}.getOrDefault(url.substringBefore('#'))
+
 /** Full-screen browser. Only explicit user actions enqueue a transfer. No JS bridge or SSL bypass. */
 class DownloadBrowserActivity: ComponentActivity() {
     private val tabs=mutableStateListOf<BrowserTab>()
@@ -182,7 +188,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                 discoveringHls++
                 hlsJobs+=scope.launch {
                     try {
-                        val provided=mediaRequests[source.url]?.second.orEmpty().toMutableMap()
+                        val provided=mediaRequests[mediaRequestKey(source.url)]?.second.orEmpty().toMutableMap()
                         if(provided.keys.none {it.equals("Referer",true)})provided["Referer"]=source.page
                         web?.settings?.userAgentString?.let {provided["User-Agent"]=it}
                         val headers=DownloadSessionHeaders.resolve(applicationContext,source.url,provided)
@@ -225,7 +231,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                             scope.launch {
                             fullscreen.hide()
                             try {
-                                val provided=mediaRequests[source.url]?.second.orEmpty().toMutableMap()
+                                val provided=mediaRequests[mediaRequestKey(source.url)]?.second.orEmpty().toMutableMap()
                                 if(provided.keys.none {it.equals("Referer",true)})provided["Referer"]=source.page
                                 provided["User-Agent"]=settings.userAgentString
                                 val headers=DownloadSessionHeaders.resolve(applicationContext,source.url,provided)
@@ -291,7 +297,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                                     value.length<=16384 && value.none {it=='\r'||it=='\n'}
                             }
                             if(mediaRequests.size>=128) mediaRequests.entries.minByOrNull {it.value.first}?.let {mediaRequests.remove(it.key,it.value)}
-                            mediaRequests[request.url.toString()]=android.os.SystemClock.elapsedRealtime() to headers
+                            mediaRequests[mediaRequestKey(request.url.toString())]=android.os.SystemClock.elapsedRealtime() to headers
                         }
                         return null
                     }
@@ -728,7 +734,7 @@ class DownloadBrowserActivity: ComponentActivity() {
             if(!agent.isNullOrBlank())putString("User-Agent",agent)
             if(page.isNotBlank())putString("Referer",page)
             // Only use headers actually observed for this exact URL, never those of another CDN.
-            mediaRequests[url]?.takeIf {android.os.SystemClock.elapsedRealtime()-it.first<120000}?.second?.forEach { (key,value) ->
+            mediaRequests[mediaRequestKey(url)]?.takeIf {android.os.SystemClock.elapsedRealtime()-it.first<120000}?.second?.forEach { (key,value) ->
                 val canonical=when(key.lowercase()) {"origin"->"Origin";"referer"->"Referer";"user-agent"->"User-Agent";"authorization"->"Authorization";"cookie"->"Cookie";else->key}
                 putString(canonical,value)
             }
