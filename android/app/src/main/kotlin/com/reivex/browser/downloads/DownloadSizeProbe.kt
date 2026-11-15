@@ -289,8 +289,8 @@ internal object DownloadSizeProbe {
             resolvedUrl=resolvedMediaUrl)
     }
 
-    private suspend fun inspectHls(url: String, headers: Map<String,String>): Result {
-        val first=readManifest(url,headers,url) ?: return Result.Unknown
+    private suspend fun inspectHls(url: String, headers: Map<String,String>,redirectDepth:Int=0): Result {
+        val first=readManifest(url,headers,url) ?: return inspectHlsFallback(url,headers,redirectDepth)
         val choice=parseMaster(first,url)
         val mediaUrl=choice?.url ?: url
         val playlist=if(choice!=null) readManifest(mediaUrl,headers,url) else first
@@ -308,7 +308,7 @@ internal object DownloadSizeProbe {
         if(bitrate!=null && (plan==null || plan.segments.size>MAX_EXACT_SEGMENTS))return Result(bitrate,false,
             if(choice?.averageBandwidth!=null) "hls-average-bandwidth" else "hls-bitrate")
         if(plan==null)return bitrate?.let{Result(it,false,"hls-average-bandwidth")}
-            ?: Result.Unknown
+            ?: inspectHlsFallback(url,headers,redirectDepth)
         val segments=plan.segments
         // Most HLS variants are media playlists with no declared bitrate. The
         // old path queried every segment (up to 40) before trying an estimate;
@@ -371,6 +371,24 @@ internal object DownloadSizeProbe {
         return bitrateEstimate(plan.durationSeconds,tsRate)?.let{
             Result(it,false,"hls-transport-pcr")
         } ?: Result.Unknown
+    }
+
+    /** A browser may label a redirecting media endpoint HLS even when the
+     * endpoint ultimately serves a direct file or a provider HTML wrapper. */
+    private suspend fun inspectHlsFallback(url:String,headers:Map<String,String>,redirectDepth:Int):Result {
+        val response=probe(url,headers)
+        if(response.length!=null)return Result(response.length,true,response.source,
+            response.name,response.mime,response.resolvedUrl)
+        if(response.dash)return DownloadDashMetadata.inspect(url,headers)
+            .copy(name=response.name,mime=response.mime)
+        if(response.page)DownloadSpecialMetadata.inspectPage(url,headers)?.let {
+            return it.copy(name=response.name ?: it.name)
+        }
+        val final=response.resolvedUrl?.takeIf {it!=url &&
+            runCatching {DownloadHttp.validateUrl(it)}.isSuccess}
+        if(response.manifest && final!=null && redirectDepth<2)return inspectHls(final,headers,redirectDepth+1)
+            .copy(name=response.name)
+        return Result.Unknown
     }
 
     private fun representativeIndices(size:Int,limit:Int):List<Int> {
