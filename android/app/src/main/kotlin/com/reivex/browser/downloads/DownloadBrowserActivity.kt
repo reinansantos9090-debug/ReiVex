@@ -173,12 +173,16 @@ class DownloadBrowserActivity: ComponentActivity() {
                 "proxy-connection","te","trailer","expect")
             val headers=LinkedHashMap<String,String>()
             var size=0
-            for((key,value) in request.requestHeaders) {
+            val priority=mapOf("referer" to 0,"origin" to 1,"user-agent" to 2,
+                "cookie" to 3,"authorization" to 4,"accept" to 5)
+            for((key,value) in request.requestHeaders.entries.sortedBy {
+                priority[it.key.lowercase(java.util.Locale.ROOT)] ?: 10
+            }.map {it.key to it.value}) {
                 val lower=key.lowercase(java.util.Locale.ROOT)
                 if(key.length !in 1..64 || !key.all {it.isLetterOrDigit()||it=='-'} ||
                     lower in forbidden || value.length>4096 || value.any {it=='\r'||it=='\n'})continue
                 val addition=key.length+value.length
-                if(headers.size>=48 || size+addition>16384)break
+                if(headers.size>=48 || size+addition>16384)continue
                 headers[key]=value;size+=addition
             }
             if(mediaRequests.size>=128)
@@ -296,8 +300,9 @@ class DownloadBrowserActivity: ComponentActivity() {
                 // Service Worker fetches do not pass through WebViewClient on
                 // every Android WebView. Observe their original request headers
                 // too, while returning null so WebView performs the request.
-                if(WebViewFeature.isFeatureSupported(
-                    WebViewFeature.SERVICE_WORKER_SHOULD_INTERCEPT_REQUEST)) {
+                if(WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_BASIC_USAGE) &&
+                    WebViewFeature.isFeatureSupported(
+                        WebViewFeature.SERVICE_WORKER_SHOULD_INTERCEPT_REQUEST)) {
                     ServiceWorkerControllerCompat.getInstance().setServiceWorkerClient(
                         object:ServiceWorkerClientCompat() {
                             override fun shouldInterceptRequest(
@@ -806,7 +811,8 @@ class DownloadBrowserActivity: ComponentActivity() {
     override fun onPause() { web?.onPause(); super.onPause() }
     override fun onResume() { super.onResume(); web?.onResume() }
     override fun onDestroy() {
-        if(WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_SHOULD_INTERCEPT_REQUEST))
+        if(WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_BASIC_USAGE) &&
+            WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_SHOULD_INTERCEPT_REQUEST))
             runCatching {ServiceWorkerControllerCompat.getInstance().setServiceWorkerClient(null)}
         mediaRequests.clear()
         super.onDestroy()

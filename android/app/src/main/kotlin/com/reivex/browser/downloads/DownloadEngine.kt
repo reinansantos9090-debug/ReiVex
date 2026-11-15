@@ -84,6 +84,9 @@ class DownloadEngine(private val context: Context) {
             val requestHeaders=DownloadSessionHeaders.resolve(
                 context,sourceUrl,headers.keys().asSequence().associateWith {headers.getString(it)}
             )
+            store.mutate(id) {
+                it.put("requestHeaderNames",requestHeaders.keys.sorted().joinToString(",").take(512))
+            }
             phase=DownloadFailureMessage.Phase.CONNECTION
             var resume=offset
             var validator=item.json.optString("validator").takeIf { it.isNotBlank() }

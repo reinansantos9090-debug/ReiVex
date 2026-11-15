@@ -264,6 +264,7 @@ initialCandidates:List<DownloadSourceSelection.Candidate> = emptyList()) {
                                         "Etapa: "+item.json.optString("lastFailurePhase","unknown"),
                                         "Falha: "+item.json.optString("lastFailureKind","unknown"),
                                         "HTTP: "+item.json.optInt("lastHttpStatus",-1),
+                                        "Cabeçalhos enviados: "+item.json.optString("requestHeaderNames","não registrados"),
                                         "Tentativas: "+item.json.optInt("attempts"),
                                         "Bytes: "+item.bytes
                                     ).joinToString("\n")
