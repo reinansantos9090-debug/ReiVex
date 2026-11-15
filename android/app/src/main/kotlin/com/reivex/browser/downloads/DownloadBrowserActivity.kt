@@ -863,7 +863,12 @@ class DownloadBrowserActivity: ComponentActivity() {
         // the page title/URL may supply an automatic anime filename.
         val pageTitle=DownloadIdentity.episodeTitleFromPage(title, web?.url.orEmpty())
             .ifBlank { DownloadIdentity.episodeTitleFromPage(title, page) }
-        val filename=if(pageTitle.isNotBlank())
+        // Only media downloads may inherit a page/anime title. APKs,
+        // PDFs, ZIPs and other browser downloads must retain their actual
+        // filename and extension from Content-Disposition, URL or MIME.
+        val isVideo=DownloadFileKind.isVideoDownload(
+            url,disposition,mime,capture!=null)
+        val filename=if(pageTitle.isNotBlank() && isVideo)
             DownloadIdentity.capturedFileName(pageTitle,url,mime)
         else DownloadResourceIdentity.bestName(disposition,url,mime)
             ?: URLUtil.guessFileName(url,disposition,mime)
