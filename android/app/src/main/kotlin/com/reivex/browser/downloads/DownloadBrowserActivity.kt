@@ -41,6 +41,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -658,6 +659,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                                 Icons.Filled.ArrowBack,
                                 "Voltar página",
                                 modifier=Modifier.size(24.dp),
+                                tint=Color.White,
                             )
                         }
                         IconButton(
@@ -669,6 +671,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                                 Icons.Filled.ArrowForward,
                                 "Avançar página",
                                 modifier=Modifier.size(24.dp),
+                                tint=Color.White,
                             )
                         }
                         IconButton(
@@ -679,7 +682,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                                 Icons.Outlined.Home,
                                 "Início do navegador",
                                 modifier=Modifier.size(24.dp),
-                                tint=MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint=Color.White,
                             )
                         }
                         Surface(
@@ -687,15 +690,15 @@ class DownloadBrowserActivity: ComponentActivity() {
                             modifier=Modifier.size(48.dp),
                             shape=CircleShape,
                             color=MaterialTheme.colorScheme.background,
-                            contentColor=MaterialTheme.colorScheme.onSurface,
+                            contentColor=Color.White,
                         ){
                             Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){
                                 Surface(
                                     modifier=Modifier.size(24.dp),
                                     shape=RoundedCornerShape(6.dp),
                                     color=MaterialTheme.colorScheme.background,
-                                    contentColor=MaterialTheme.colorScheme.onSurfaceVariant,
-                                    border=BorderStroke(1.5.dp,MaterialTheme.colorScheme.onSurfaceVariant),
+                                    contentColor=Color.White,
+                                    border=BorderStroke(1.5.dp,Color.White),
                                 ){
                                     Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){
                                         Text("${tabs.size}",style=MaterialTheme.typography.labelSmall.copy(fontSize=9.sp))
@@ -711,7 +714,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                                 Icons.Filled.Download,
                                 "Downloads",
                                 modifier=Modifier.size(24.dp),
-                                tint=MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint=Color.White,
                             )
                         }
                     }
