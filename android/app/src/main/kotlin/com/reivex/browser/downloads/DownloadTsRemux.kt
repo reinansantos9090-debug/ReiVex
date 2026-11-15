@@ -60,6 +60,17 @@ internal object DownloadTsRemux {
                     context.contentResolver.openFileDescriptor(output,"rw")?.use { outDescriptor ->
                         val activeMuxer=MediaMuxer(outDescriptor.fileDescriptor,MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
                         muxer=activeMuxer
+                        // TS timestamps may start hours into a transport-stream
+                        // clock. MP4 must begin at a shared zero-based timeline
+                        // without losing the relative audio/video offset.
+                        val starts=formats.indices.map { index ->
+                            extractor.selectTrack(index)
+                            val first=extractor.sampleTime
+                            extractor.unselectTrack(index)
+                            require(first>=0L) {"Faixa sem amostras"}
+                            first
+                        }
+                        val baseTimeUs=starts.minOrNull() ?: error("Sem faixas")
                         val tracks=formats.map(activeMuxer::addTrack)
                         formats.indices.forEach(extractor::selectTrack)
                         activeMuxer.start()
@@ -83,7 +94,8 @@ internal object DownloadTsRemux {
                             val timestamp=extractor.sampleTime
                             require(timestamp>=0 && timestamp>=lastTime[track]) {"Timestamps incompatíveis"}
                             lastTime[track]=timestamp
-                            info.set(0,size,timestamp,extractor.sampleFlags)
+                            require(timestamp>=baseTimeUs) {"Timestamp anterior ao início"}
+                            info.set(0,size,timestamp-baseTimeUs,extractor.sampleFlags)
                             activeMuxer.writeSampleData(tracks[track],buffer,info)
                             samples[track]++
                             copied+=size.toLong()
@@ -144,6 +156,16 @@ internal object DownloadTsRemux {
                     if(!compatibleTracks(mimes)) return null
                     val activeMuxer=MediaMuxer(output.absolutePath,MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
                     muxer=activeMuxer
+                    // Keep the offsets between audio and video, but normalize
+                    // their common origin so the MP4 does not start frozen.
+                    val starts=formats.indices.map { index ->
+                        extractor.selectTrack(index)
+                        val first=extractor.sampleTime
+                        extractor.unselectTrack(index)
+                        require(first>=0L) {"Faixa sem amostras"}
+                        first
+                    }
+                    val baseTimeUs=starts.minOrNull() ?: error("Sem faixas")
                     val tracks=formats.map(activeMuxer::addTrack)
                     formats.indices.forEach(extractor::selectTrack)
                     activeMuxer.start()
@@ -167,7 +189,8 @@ internal object DownloadTsRemux {
                         val whenUs=extractor.sampleTime
                         require(whenUs>=0 && whenUs>=lastTime[track]) {"Timestamps incompatíveis"}
                         lastTime[track]=whenUs
-                        info.set(0,length,whenUs,extractor.sampleFlags)
+                        require(whenUs>=baseTimeUs) {"Timestamp anterior ao início"}
+                        info.set(0,length,whenUs-baseTimeUs,extractor.sampleFlags)
                         activeMuxer.writeSampleData(tracks[track],buffer,info)
                         samples[track]++
                         copied+=length.toLong()

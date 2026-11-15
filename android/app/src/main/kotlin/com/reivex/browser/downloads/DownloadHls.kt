@@ -198,9 +198,11 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
                 item=store.mutate(id) { it.put("bytes",0).put("hlsIndex",0).put("generation",it.optLong("generation")+1).put("hlsFingerprint",fingerprint).put("hlsEstimatedTotal",0) }
             }
             val extension=if(playlist.init==null) "ts" else "mp4"
+            val tsIntegrity=if(extension=="ts") DownloadTsSegmentIntegrity() else null
             val base=item.name.substringBeforeLast('.',item.name)
             store.mutate(id) {
                 it.put("hls",true).put("mime",if(extension=="ts") "video/mp2t" else "video/mp4").put("total",-1).put("hlsCount",playlist.segments.size)
+                it.put("hlsDurationUs",(playlist.duration*1_000_000.0).toLong())
                 it.put("name","$base.$extension")
                 if(it.optLong("episodeId")==0L) it.put("virtualUri","content://${context.packageName}.downloads/$id/${Uri.encode("$base.$extension")}")
             }
@@ -261,9 +263,11 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
                                     val n=input.read(buffer)
                                     if(n<0)break
                                     require(received<=1024L*1024*1024) {"Segmento excede o limite seguro"}
+                                    tsIntegrity?.accept(buffer,0,n)
                                     out.write(buffer,0,n)
                                 }
                             }
+                            tsIntegrity?.finishSegment()
                             require(received>0 && (c.contentLengthLong<0 || received==c.contentLengthLong) &&
                                 (span==null || received==span.length)) {"Segmento incompleto"}
                             out.sync()

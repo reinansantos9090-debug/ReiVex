@@ -413,6 +413,12 @@ class DownloadEngine(private val context: Context) {
             DownloadContainerDetector.outputName(originalName,sourceExtension)
             else originalName
         val needsRemux=sourceExtension in DownloadContainerDetector.convertibleExtensions
+        // These expectations apply to EVERY conversion path, including the
+        // Media3 fallback. Keep audio present and reject truncated timelines.
+        val sourceTracks=DownloadMp4Integrity.sourceTracks(context,target.readUri())
+        val expectedDurationUs=beforePublication.json.optLong("hlsDurationUs").takeIf {it>0L}
+            ?: sourceTracks?.durationUs?.takeIf {it>0L && sourceExtension!="ts"}
+        val expectedAudio=sourceTracks?.hasAudio
         // Crash recovery must never leave a raw TS/MKV/AVI labeled MP4.
         var publicRemux:Uri?=null
         var privateRemux:File?=null
@@ -427,14 +433,20 @@ class DownloadEngine(private val context: Context) {
                 if(target.isPublic) {
                     val candidate=target.sibling("remux.mp4")
                     store.mutate(id){it.put("remuxCandidateUri",candidate.toString())}
-                    if(DownloadTsRemux.tryRemux(context,target.readUri(),candidate)) {
+                    if(DownloadTsRemux.tryRemux(context,target.readUri(),candidate) &&
+                        DownloadMp4Integrity.verify(context,candidate,expectedAudio,expectedDurationUs)) {
                         publicRemux=candidate
                     } else {
                         target.discard(candidate)
                         store.mutate(id){it.remove("remuxCandidateUri")}
                     }
                 } else {
-                    privateRemux=DownloadTsRemux.tryRemux(context,file)
+                    val remux=DownloadTsRemux.tryRemux(context,file)
+                    if(remux!=null) {
+                        if(DownloadMp4Integrity.verify(context,Uri.fromFile(remux),expectedAudio,expectedDurationUs))
+                            privateRemux=remux
+                        else remux.delete()
+                    }
                 }
             }
             // A source with unsupported MP4 sample types may still be converted
@@ -443,6 +455,10 @@ class DownloadEngine(private val context: Context) {
             if(needsRemux && publicRemux==null && privateRemux==null) {
                 stagedTranscode=DownloadMediaTranscoder.tryTranscode(context,target.readUri(),beforePublication.bytes)
                 stagedTranscode?.let { converted ->
+                    // Media3 reporting success is not enough: check every
+                    // sample and ensure it did not silently lose the audio.
+                    if(!DownloadMp4Integrity.verify(context,Uri.fromFile(converted),expectedAudio,expectedDurationUs))
+                        return@let
                     if(target.isPublic) {
                         val candidate=target.sibling("transcoded.mp4")
                         store.mutate(id){it.put("remuxCandidateUri",candidate.toString())}
@@ -461,8 +477,9 @@ class DownloadEngine(private val context: Context) {
                                 }
                                 stream.flush()
                             }
-                            if(target.sizeOf(candidate)!=converted.length())
-                                throw IOException("O MP4 convertido não foi gravado por completo")
+                            if(target.sizeOf(candidate)!=converted.length() ||
+                                !DownloadMp4Integrity.verify(context,candidate,expectedAudio,expectedDurationUs))
+                                throw IOException("O MP4 convertido não passou na verificação final de áudio e vídeo")
                             publicRemux=candidate
                         } catch(cancelled: CancellationException) {
                             throw cancelled
@@ -474,6 +491,13 @@ class DownloadEngine(private val context: Context) {
                 }
             }
             val didRemux=publicRemux!=null || privateRemux!=null
+            // HLS fMP4 and Media3 HLS/DASH exports are MP4 before they
+            // reach this method. They still need the same final verification.
+            if(sourceExtension=="mp4" &&
+                (beforePublication.json.optBoolean("hls") || beforePublication.json.optBoolean("adaptiveDash")) &&
+                !DownloadMp4Integrity.verify(context,target.readUri(),expectedAudio,expectedDurationUs,
+                    normalizedStart=true))
+                throw PermanentFailure("O MP4 baixado falhou na verificação de vídeo, áudio ou duração. Não foi publicado como concluído.")
             val outputName=if(didRemux || sourceExtension=="mp4")
                 DownloadContainerDetector.outputName(realSourceName,"mp4") else realSourceName
             val outputMime=if(didRemux || sourceExtension=="mp4") "video/mp4" else sourceMime
