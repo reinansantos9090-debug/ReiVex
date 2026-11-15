@@ -37,6 +37,7 @@ internal object DownloadSizeProbe {
     private const val MAX_EXACT_SEGMENTS = 40
     private const val MAX_SAMPLE_SEGMENTS = 12
     private const val MAX_SAMPLE_BYTES = 4 * 1024 * 1024
+    private const val MAX_HLS_SIZE_SAMPLES = 5
 
     fun internalAvailableBytes(context: Context): Long? = runCatching {
         val folder = runCatching { Environment.getExternalStorageDirectory() }
@@ -155,6 +156,12 @@ internal object DownloadSizeProbe {
                     return@withContext DownloadDashMetadata.inspect(url,headers).copy(name=hint)
                 if(manifest) return@withContext inspectHls(url,headers).copy(name=hint)
                 trustedUrlLength(url)?.let { return@withContext Result(it,true,"googlevideo-clen",hint) }
+                // Public Google Cloud Storage objects have an authoritative
+                // metadata endpoint. Ask it before spending several seconds
+                // on generic range/HEAD retries against chunked media gateways.
+                DownloadSpecialMetadata.inspectCloud(url)?.let {
+                    return@withContext it.copy(name=it.name ?: hint)
+                }
                 val response=probe(url,headers)
                 if(response.dash) return@withContext DownloadDashMetadata.inspect(url,headers)
                     .copy(name=response.name ?: hint, mime=response.mime)
@@ -165,9 +172,6 @@ internal object DownloadSizeProbe {
                         response.name ?: hint,response.mime,response.resolvedUrl)
                 if(response.page) DownloadSpecialMetadata.inspectPage(url,headers)?.let {
                     return@withContext it.copy(name=response.name ?: hint)
-                }
-                DownloadSpecialMetadata.inspectCloud(url)?.let {
-                    return@withContext it.copy(name=it.name ?: response.name ?: hint)
                 }
                 // Only after the fast, low-cost strategies fail: the advanced
                 // bounded probes cover 416, suffix, multipart and validated
@@ -285,8 +289,8 @@ internal object DownloadSizeProbe {
             resolvedUrl=resolvedMediaUrl)
     }
 
-    private suspend fun inspectHls(url: String, headers: Map<String,String>): Result {
-        val first=readManifest(url,headers,url) ?: return Result.Unknown
+    private suspend fun inspectHls(url: String, headers: Map<String,String>,redirectDepth:Int=0): Result {
+        val first=readManifest(url,headers,url) ?: return inspectHlsFallback(url,headers,redirectDepth)
         val choice=parseMaster(first,url)
         val mediaUrl=choice?.url ?: url
         val playlist=if(choice!=null) readManifest(mediaUrl,headers,url) else first
@@ -304,31 +308,28 @@ internal object DownloadSizeProbe {
         if(bitrate!=null && (plan==null || plan.segments.size>MAX_EXACT_SEGMENTS))return Result(bitrate,false,
             if(choice?.averageBandwidth!=null) "hls-average-bandwidth" else "hls-bitrate")
         if(plan==null)return bitrate?.let{Result(it,false,"hls-average-bandwidth")}
-            ?: Result.Unknown
+            ?: inspectHlsFallback(url,headers,redirectDepth)
         val segments=plan.segments
-        // Inspect all small playlists or sample long ones. Keep network work
-        // bounded so opening the dialog never starts hundreds of downloads.
-        val indices=if(segments.size<=MAX_EXACT_SEGMENTS)segments.indices.toList()
-        else (segments.indices.take(MAX_SAMPLE_SEGMENTS/2) +
-            segments.indices.toList().takeLast(MAX_SAMPLE_SEGMENTS/2)).distinct()
+        // Most HLS variants are media playlists with no declared bitrate. The
+        // old path queried every segment (up to 40) before trying an estimate;
+        // slow or metadata-hostile servers could outlive the dialog timeout.
+        // A few representative fragments are enough for a labeled estimate.
+        val indices=representativeIndices(segments.size,MAX_HLS_SIZE_SAMPLES)
         val sizes=coroutineScope {
-            indices.chunked(6).flatMap { chunk ->
-                chunk.map { index -> async(Dispatchers.IO) {
+            indices.map { index -> async(Dispatchers.IO) {
                     currentCoroutineContext().ensureActive()
-                    DownloadHlsMetadata.cachedSize(segments[index]) ?: 
-                        probe(segments[index],headers,credentialOrigin=url).length?.also {
+                    DownloadHlsMetadata.cachedSize(segments[index]) ?:
+                        probeSegmentLength(segments[index],headers,url)?.also {
                             DownloadHlsMetadata.rememberSize(segments[index],it)
                         }
                 }}.awaitAll()
-            }
         }
         val successes=sizes.filterNotNull()
-        if(successes.size==indices.size && successes.isNotEmpty()) {
+        if(successes.size>=2) {
             val estimates=indices.zip(sizes).mapNotNull { (i,size) ->
                 size?.let{i to it}
             }.toMap()
-            val rawTotal=if(indices.size==segments.size) successes.sumOf { it }
-            else richer?.let { DownloadHlsMetadata.weightedEstimate(it.pieces,estimates) }
+            val rawTotal=richer?.let { DownloadHlsMetadata.weightedEstimate(it.pieces,estimates) }
                 ?: (successes.average()*segments.size).toLong()
             val initSize=plan.init?.let {probe(it,headers,credentialOrigin=url).length}
             if(plan.init!=null && initSize==null)return Result(
@@ -343,11 +344,9 @@ internal object DownloadSizeProbe {
             val bytes=(rawTotal-encryptedPadding).coerceAtLeast(1L)+(initSize ?: 0L)
             if(bytes>0) {
                 // TS may be remuxed to MP4 (different exact output bytes).
-                val exact=indices.size==segments.size && !plan.encrypted && plan.init!=null
-                return Result(bytes,exact,when {
-                    exact -> "hls-fmp4"
+                return Result(bytes,false,when {
                     plan.encrypted -> "hls-encrypted-adjusted-estimate"
-                    else -> "hls-estimate"
+                    else -> "hls-segment-sample"
                 })
             }
         }
@@ -356,7 +355,7 @@ internal object DownloadSizeProbe {
         // Some video hosts reject HEAD and Range requests, but permit normal
         // segment GETs. Sample only three *complete*, bounded segments. This
         // is expressly an estimate and is never used as a download limit.
-        val sampleIndices=listOf(0,segments.size/2,segments.lastIndex).distinct()
+        val sampleIndices=representativeIndices(segments.size,3)
         val sampleSizes=coroutineScope {
             sampleIndices.map { index -> async(Dispatchers.IO) {
                 currentCoroutineContext().ensureActive()
@@ -372,6 +371,47 @@ internal object DownloadSizeProbe {
         return bitrateEstimate(plan.durationSeconds,tsRate)?.let{
             Result(it,false,"hls-transport-pcr")
         } ?: Result.Unknown
+    }
+
+    /** A browser may label a redirecting media endpoint HLS even when the
+     * endpoint ultimately serves a direct file or a provider HTML wrapper. */
+    private suspend fun inspectHlsFallback(url:String,headers:Map<String,String>,redirectDepth:Int):Result {
+        val response=probe(url,headers)
+        if(response.length!=null)return Result(response.length,true,response.source,
+            response.name,response.mime,response.resolvedUrl)
+        if(response.dash)return DownloadDashMetadata.inspect(url,headers)
+            .copy(name=response.name,mime=response.mime)
+        if(response.page)DownloadSpecialMetadata.inspectPage(url,headers)?.let {
+            return it.copy(name=response.name ?: it.name)
+        }
+        val final=response.resolvedUrl?.takeIf {it!=url &&
+            runCatching {DownloadHttp.validateUrl(it)}.isSuccess}
+        if(response.manifest && final!=null && redirectDepth<2)return inspectHls(final,headers,redirectDepth+1)
+            .copy(name=response.name)
+        return Result.Unknown
+    }
+
+    private fun representativeIndices(size:Int,limit:Int):List<Int> {
+        if(size<=0 || limit<=0)return emptyList()
+        if(size<=limit)return (0 until size).toList()
+        return (0 until limit).map { slot ->
+            (slot.toLong()*(size-1)/(limit-1).coerceAtLeast(1)).toInt()
+        }.distinct()
+    }
+
+    /** One bounded Range request per HLS fragment; never reads the media body. */
+    private fun probeSegmentLength(url:String,headers:Map<String,String>,origin:String):Long? {
+        var connection:HttpURLConnection?=null
+        return try {
+            connection=DownloadHttp.connect(url,headers,0,null,credentialOrigin=origin,
+                method="GET",probeRange="bytes=0-",closeAfterResponse=true,
+                connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS,
+                redirectCookieProvider=DownloadSessionHeaders::cookieForTarget)
+            val c=connection
+            directLength(c.responseCode,c.getHeaderFieldLong("Content-Length",-1),
+                c.getHeaderField("Content-Range"),c.getHeaderField("Content-Encoding"),c.contentType)
+        }catch(_:java.io.IOException){null}
+        finally{connection?.disconnect()}
     }
 
     private fun sampleTransportBitrate(url:String,headers:Map<String,String>,origin:String):Long? {

@@ -55,6 +55,20 @@ internal object DownloadSizeIntelligence {
     fun fromUrlMetadata(url:String):Evidence? {
         val uri=runCatching{java.net.URI(url)}.getOrNull() ?: return null
         if(uri.scheme?.lowercase() !in setOf("http","https"))return null
+        // Hydrax's chunked MP4 router carries its total byte count in the
+        // URL fragment: mp4/chunk/{mediaId}/{size}/{chunkSize}/{quality}/{codec}.
+        // Some storage-backed Hydrax routes use the same fields under mp4/r2.
+        // Fragments are not sent to the HTTP server, so only trust this shape
+        // on its mediastorage endpoint and never interpret arbitrary numbers.
+        if(uri.host.equals("storage.googleapis.com",true) &&
+            uri.rawPath.orEmpty().startsWith("/mediastorage/")) {
+            val route=Regex(
+                """(?i)^mp4/(?:chunk|r2)/\d+/(\d+)/\d+/(?:2160|1440|1080|720|480|360|240)p/[^/?#]+(?:\?.*)?$"""
+            ).matchEntire(uri.rawFragment.orEmpty())
+            val bytes=route?.groupValues?.getOrNull(1)?.toLongOrNull()
+            if(bytes!=null && bytes in 1_048_576L..(2L*1024*1024*1024*1024))
+                return Evidence(bytes,true,"hydrax-route-size")
+        }
         val query=uri.rawQuery?.takeIf{it.length<=16384} ?: return null
         val names=setOf("file_size","filesize","download_size","content_length",
             "content-length","contentlength","response-content-length",

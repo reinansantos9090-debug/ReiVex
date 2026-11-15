@@ -19,6 +19,9 @@ import android.webkit.*
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.webkit.ServiceWorkerClientCompat
+import androidx.webkit.ServiceWorkerControllerCompat
+import androidx.webkit.WebViewFeature
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
@@ -57,6 +60,12 @@ private data class BrowserDownloadOffer(
     val browserLength: Long? = null,
     val providerEstimatedSize:Long?=null,
 )
+
+/** HTTP requests never include URL fragments, but player routes may store
+ * quality/chunk metadata there. Match captured headers against the wire URL. */
+private fun mediaRequestKey(url:String):String = runCatching {
+    Uri.parse(url).buildUpon().fragment(null).build().toString()
+}.getOrDefault(url.substringBefore('#'))
 
 /** Full-screen browser. Only explicit user actions enqueue a transfer. No JS bridge or SSL bypass. */
 class DownloadBrowserActivity: ComponentActivity() {
@@ -157,6 +166,30 @@ class DownloadBrowserActivity: ComponentActivity() {
         var discoveryRequested by remember {mutableStateOf(false)}
         var discoveryGeneration by remember {mutableIntStateOf(0)}
         var discoveringHls by remember {mutableIntStateOf(0)}
+        fun rememberMediaRequest(request:WebResourceRequest) {
+            if(request.method!="GET" || request.url.scheme !in setOf("http","https"))return
+            val forbidden=setOf("host","content-length","transfer-encoding","accept-encoding",
+                "range","if-range","connection","keep-alive","upgrade","proxy-authorization",
+                "proxy-connection","te","trailer","expect")
+            val headers=LinkedHashMap<String,String>()
+            var size=0
+            val priority=mapOf("referer" to 0,"origin" to 1,"user-agent" to 2,
+                "cookie" to 3,"authorization" to 4,"accept" to 5)
+            for((key,value) in request.requestHeaders.entries.sortedBy {
+                priority[it.key.lowercase(java.util.Locale.ROOT)] ?: 10
+            }.map {it.key to it.value}) {
+                val lower=key.lowercase(java.util.Locale.ROOT)
+                if(key.length !in 1..64 || !key.all {it.isLetterOrDigit()||it=='-'} ||
+                    lower in forbidden || value.length>4096 || value.any {it=='\r'||it=='\n'})continue
+                val addition=key.length+value.length
+                if(headers.size>=48 || size+addition>16384)continue
+                headers[key]=value;size+=addition
+            }
+            if(mediaRequests.size>=128)
+                mediaRequests.entries.minByOrNull {it.value.first}?.let {mediaRequests.remove(it.key,it.value)}
+            mediaRequests[mediaRequestKey(request.url.toString())]=
+                android.os.SystemClock.elapsedRealtime() to headers
+        }
         fun updateCandidates() {
             val now=System.nanoTime()/1_000_000
             val confirmed=observed.values.filter {
@@ -182,7 +215,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                 discoveringHls++
                 hlsJobs+=scope.launch {
                     try {
-                        val provided=mediaRequests[source.url]?.second.orEmpty().toMutableMap()
+                        val provided=mediaRequests[mediaRequestKey(source.url)]?.second.orEmpty().toMutableMap()
                         if(provided.keys.none {it.equals("Referer",true)})provided["Referer"]=source.page
                         web?.settings?.userAgentString?.let {provided["User-Agent"]=it}
                         val headers=DownloadSessionHeaders.resolve(applicationContext,source.url,provided)
@@ -225,7 +258,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                             scope.launch {
                             fullscreen.hide()
                             try {
-                                val provided=mediaRequests[source.url]?.second.orEmpty().toMutableMap()
+                                val provided=mediaRequests[mediaRequestKey(source.url)]?.second.orEmpty().toMutableMap()
                                 if(provided.keys.none {it.equals("Referer",true)})provided["Referer"]=source.page
                                 provided["User-Agent"]=settings.userAgentString
                                 val headers=DownloadSessionHeaders.resolve(applicationContext,source.url,provided)
@@ -264,6 +297,23 @@ class DownloadBrowserActivity: ComponentActivity() {
                         if(showMedia)updateCandidates()
                     },
                 )
+                // Service Worker fetches do not pass through WebViewClient on
+                // every Android WebView. Observe their original request headers
+                // too, while returning null so WebView performs the request.
+                if(WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_BASIC_USAGE) &&
+                    WebViewFeature.isFeatureSupported(
+                        WebViewFeature.SERVICE_WORKER_SHOULD_INTERCEPT_REQUEST)) {
+                    ServiceWorkerControllerCompat.getInstance().setServiceWorkerClient(
+                        object:ServiceWorkerClientCompat() {
+                            override fun shouldInterceptRequest(
+                                request:WebResourceRequest,
+                            ):WebResourceResponse? {
+                                rememberMediaRequest(request)
+                                return null
+                            }
+                        },
+                    )
+                }
                 settings.javaScriptEnabled=true; settings.domStorageEnabled=true
                 settings.allowFileAccess=false; settings.allowContentAccess=false
                 // Respect the mobile viewport without zooming the whole page out when
@@ -285,14 +335,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                     override fun shouldInterceptRequest(view: WebView,request: WebResourceRequest): WebResourceResponse? {
                         if(!request.isForMainFrame && BrowserAdBlock.blocked(request,tab.url))
                             return WebResourceResponse("text/plain","UTF-8",java.io.ByteArrayInputStream(byteArrayOf()))
-                        if(request.method=="GET" && request.url.scheme in setOf("http","https")) {
-                            val headers=request.requestHeaders.filter { (key,value) ->
-                                key.lowercase() in setOf("origin","referer","user-agent","authorization","cookie") &&
-                                    value.length<=16384 && value.none {it=='\r'||it=='\n'}
-                            }
-                            if(mediaRequests.size>=128) mediaRequests.entries.minByOrNull {it.value.first}?.let {mediaRequests.remove(it.key,it.value)}
-                            mediaRequests[request.url.toString()]=android.os.SystemClock.elapsedRealtime() to headers
-                        }
+                        rememberMediaRequest(request)
                         return null
                     }
                     override fun shouldOverrideUrlLoading(view: WebView,request: WebResourceRequest): Boolean {
@@ -728,7 +771,7 @@ class DownloadBrowserActivity: ComponentActivity() {
             if(!agent.isNullOrBlank())putString("User-Agent",agent)
             if(page.isNotBlank())putString("Referer",page)
             // Only use headers actually observed for this exact URL, never those of another CDN.
-            mediaRequests[url]?.takeIf {android.os.SystemClock.elapsedRealtime()-it.first<120000}?.second?.forEach { (key,value) ->
+            mediaRequests[mediaRequestKey(url)]?.takeIf {android.os.SystemClock.elapsedRealtime()-it.first<120000}?.second?.forEach { (key,value) ->
                 val canonical=when(key.lowercase()) {"origin"->"Origin";"referer"->"Referer";"user-agent"->"User-Agent";"authorization"->"Authorization";"cookie"->"Cookie";else->key}
                 putString(canonical,value)
             }
@@ -767,6 +810,13 @@ class DownloadBrowserActivity: ComponentActivity() {
     }
     override fun onPause() { web?.onPause(); super.onPause() }
     override fun onResume() { super.onResume(); web?.onResume() }
+    override fun onDestroy() {
+        if(WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_BASIC_USAGE) &&
+            WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_SHOULD_INTERCEPT_REQUEST))
+            runCatching {ServiceWorkerControllerCompat.getInstance().setServiceWorkerClient(null)}
+        mediaRequests.clear()
+        super.onDestroy()
+    }
     companion object {
         fun isVideoLink(url: String): Boolean {
             val path=Uri.parse(url).path.orEmpty().lowercase()
