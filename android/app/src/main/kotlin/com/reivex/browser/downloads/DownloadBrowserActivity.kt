@@ -694,7 +694,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                                     modifier=Modifier.size(24.dp),
                                     shape=RoundedCornerShape(6.dp),
                                     color=MaterialTheme.colorScheme.background,
-                                    contentColor=MaterialTheme.colorScheme.onSurface,
+                                    contentColor=MaterialTheme.colorScheme.onSurfaceVariant,
                                     border=BorderStroke(1.5.dp,MaterialTheme.colorScheme.onSurfaceVariant),
                                 ){
                                     Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){
