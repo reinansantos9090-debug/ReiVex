@@ -103,7 +103,7 @@ object DownloadIdentity {
 
         val number = episode ?: return ""
         if (series.isBlank()) return ""
-        val canonicalSeries=series.replace(Regex("""(?i)^re[ -]+zero\\b"""),"Re:Zero")
+        val canonicalSeries=series.replace(Regex("""(?i)^re[ -]+zero\b"""),"Re:Zero")
         val formattedSeries = canonicalSeries.split(Regex("""\s+""")).joinToString(" ") { word ->
             if (word.equals("re:zero", true)) "Re:Zero"
             else word.replaceFirstChar { it.titlecase() }
