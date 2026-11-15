@@ -53,7 +53,7 @@ internal class BrowserTab(val initialUrl:String="",val headers:Map<String,String
                     Icon(Icons.Filled.Add,"Nova guia",modifier=Modifier.size(28.dp))
                 }
             }
-            LazyVerticalGrid(columns=GridCells.Adaptive(minSize=72.dp),contentPadding=PaddingValues(12.dp),
+            LazyVerticalGrid(columns=GridCells.Adaptive(minSize=144.dp),contentPadding=PaddingValues(12.dp),
                 horizontalArrangement=Arrangement.spacedBy(10.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
                 items(tabs,key={it.id}) {tab ->
                     var dragOffset by remember(tab.id) { mutableFloatStateOf(0f) }
@@ -91,29 +91,29 @@ internal class BrowserTab(val initialUrl:String="",val headers:Map<String,String
                                 else MaterialTheme.colorScheme.surfaceContainerLow,
                         ),
                     ) {
-                        Column(Modifier.fillMaxSize().padding(5.dp)) {
+                        Column(Modifier.fillMaxSize().padding(8.dp)) {
                             Row(
-                                Modifier.fillMaxWidth().height(19.dp),
+                                Modifier.fillMaxWidth().height(28.dp),
                                 verticalAlignment=Alignment.CenterVertically,
                             ) {
                                 Icon(
                                     if(tab.home)Icons.Outlined.Home else Icons.Outlined.Language,
                                     contentDescription=null,
-                                    modifier=Modifier.size(12.dp),
+                                    modifier=Modifier.size(16.dp),
                                     tint=if(tab.id==selected)MaterialTheme.colorScheme.primary
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                Spacer(Modifier.width(3.dp))
+                                Spacer(Modifier.width(5.dp))
                                 Text(
                                     tab.title,
                                     Modifier.weight(1f),
-                                    style=MaterialTheme.typography.labelSmall.copy(fontSize=9.sp),
+                                    style=MaterialTheme.typography.labelSmall.copy(fontSize=12.sp),
                                     maxLines=1,
                                     overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                 )
                             }
                             Box(
-                                Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(12.dp))
                                     .background(MaterialTheme.colorScheme.surface),
                                 contentAlignment=Alignment.Center,
                             ) {
@@ -126,14 +126,14 @@ internal class BrowserTab(val initialUrl:String="",val headers:Map<String,String
                                 ) else Icon(
                                     Icons.Outlined.Home,
                                     contentDescription=null,
-                                    modifier=Modifier.size(22.dp),
+                                    modifier=Modifier.size(32.dp),
                                     tint=MaterialTheme.colorScheme.primary,
                                 )
                             }
                             Text(
                                 if(tab.home)"Início" else BrowserAdBlock.host(tab.url),
                                 Modifier.fillMaxWidth().padding(top=3.dp),
-                                style=MaterialTheme.typography.labelSmall.copy(fontSize=8.sp),
+                                style=MaterialTheme.typography.labelSmall.copy(fontSize=10.sp),
                                 maxLines=1,
                                 overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             )
