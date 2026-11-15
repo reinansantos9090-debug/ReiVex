@@ -691,14 +691,14 @@ class DownloadBrowserActivity: ComponentActivity() {
                         ){
                             Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){
                                 Surface(
-                                    modifier=Modifier.size(32.dp),
-                                    shape=RoundedCornerShape(8.dp),
+                                    modifier=Modifier.size(24.dp),
+                                    shape=RoundedCornerShape(6.dp),
                                     color=MaterialTheme.colorScheme.background,
                                     contentColor=MaterialTheme.colorScheme.onSurface,
-                                    border=BorderStroke(2.dp,MaterialTheme.colorScheme.onSurface),
+                                    border=BorderStroke(1.5.dp,MaterialTheme.colorScheme.onSurfaceVariant),
                                 ){
                                     Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){
-                                        Text("${tabs.size}",style=MaterialTheme.typography.labelSmall)
+                                        Text("${tabs.size}",style=MaterialTheme.typography.labelSmall.copy(fontSize=9.sp))
                                     }
                                 }
                             }
@@ -711,6 +711,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                                 Icons.Filled.Download,
                                 "Downloads",
                                 modifier=Modifier.size(24.dp),
+                                tint=MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
