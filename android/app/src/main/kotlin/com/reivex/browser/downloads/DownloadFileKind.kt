@@ -99,6 +99,9 @@ internal object DownloadFileKind {
     fun recoveredName(
         initial:String, responseName:String?, responseMime:String?, header:ByteArray
     ):String? {
+        // A valid video signature always wins over contradictory server MIME
+        // or filename hints. Never relabel a playable MP4 as an APK.
+        if(DownloadContainerDetector.sniff(header)!=null) return null
         val nameExtension=extension(initial)
         val detected=signatureExtension(header)
         val declared=ordinaryExtensionFromMime(responseMime)
