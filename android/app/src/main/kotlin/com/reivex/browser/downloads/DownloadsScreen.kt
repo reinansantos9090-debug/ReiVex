@@ -670,7 +670,7 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
                         val sizeMessage=when(sizeResult?.source) {
                             "signed-http-401" -> "O servidor exige autenticação. Abra novamente o vídeo e capture o link."
                             "signed-http-403" -> "O servidor recusou o link; ele pode ter expirado. Gere um link novo na página."
-                            else -> "Não foi possível consultar o tamanho. Toque em atualizar para tentar novamente."
+                            else -> "O servidor não informou o tamanho antes do download. Toque em atualizar para consultar novamente."
                         }
                         Text(sizeMessage,
                             color=Color.LightGray,style=MaterialTheme.typography.bodySmall)

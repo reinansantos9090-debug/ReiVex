@@ -118,7 +118,7 @@ internal object BrowserMediaCapture {
     }
     return qualityContext(text.slice(Math.max(0,start-160),Math.min(text.length,end+160)));
   };
-  const emitEmbedded=(raw,label='',mimeHint='')=>{try{
+  const emitEmbedded=(raw,label='',mimeHint='',estimatedBytes=0)=>{try{
     const url=String(raw||'').replace(/\\u002f/gi,'/').replace(/\\\//g,'/').replace(/\\u0026/gi,'&').replace(/&amp;/gi,'&');
     const hint=String(mimeHint||'').toLowerCase(),format=mediaFormat(url)||
       (hint.includes('mpegurl')?'hls':hint.includes('dash+xml')?'dash':hint.startsWith('video/')?'video':
@@ -127,23 +127,40 @@ internal object BrowserMediaCapture {
     const quality=qualityFrom(label,url);
     if(format==='video'&&quality==='Qualidade não informada')return;
     sendOption(url,label||quality,'source',false,hint||
-      (format==='hls'?'application/vnd.apple.mpegurl':format==='dash'?'application/dash+xml':'video/mp4'));
+      (format==='hls'?'application/vnd.apple.mpegurl':format==='dash'?'application/dash+xml':'video/mp4'),'',estimatedBytes);
   }catch(e){}};
+  const explicitSize=value=>{try{
+    if(!value||typeof value!=='object'||Array.isArray(value))return 0;
+    for(const key of Object.keys(value).slice(0,100)){
+      const normalized=key.replace(/[_-]/g,'').toLowerCase();
+      if(!/^(filesize|filesizebytes|contentsize|contentlength|totalsize|totalbytes|bytes|size)$/.test(normalized))continue;
+      const raw=value[key];let bytes=0;
+      if(typeof raw==='number'&&Number.isFinite(raw))bytes=raw;
+      else if(typeof raw==='string'){
+        const match=/^\s*(\d+(?:[.,]\d+)?)\s*(B|KB|MB|GB|TB|KiB|MiB|GiB|TiB)?\s*$/i.exec(raw);
+        if(match){const n=Number(match[1].replace(',','.')),unit=(match[2]||'B').toLowerCase();
+          const factor={b:1,kb:1000,mb:1e6,gb:1e9,tb:1e12,kib:1024,mib:1048576,gib:1073741824,tib:1099511627776}[unit]||1;
+          bytes=n*factor;}
+      }
+      if(Number.isFinite(bytes)&&bytes>=1048576&&bytes<=2*1024*1024*1024*1024)return Math.round(bytes);
+    }
+  }catch(e){}return 0;};
   const scanStructured=(root,inherited='',mimeHint='')=>{try{
     const state={visited:0,emitted:0,seen:new Set()};
-    const walk=(value,quality,mime,depth)=>{
+    const walk=(value,quality,mime,depth,inheritedBytes=0)=>{
       if(depth>10||state.visited++>=1800||state.emitted>=48||value==null)return;
       if(typeof value==='string'){
         const normalized=value.replace(/\\u002f/gi,'/').replace(/\\\//g,'/').replace(/\\u0026/gi,'&').replace(/&amp;/gi,'&');
         if(mediaFormat(normalized)||(mime&&/^(?:https?:|\/\/|\/|\.\.?\/)/i.test(normalized))){
-          const key=normalized+'|'+quality;if(!state.seen.has(key)){state.seen.add(key);emitEmbedded(normalized,quality,mime);state.emitted++;}
+          const key=normalized+'|'+quality;if(!state.seen.has(key)){state.seen.add(key);emitEmbedded(normalized,quality,mime,inheritedBytes);state.emitted++;}
         }else if(normalized.length<=65536&&/^\s*[\[{]/.test(normalized)){
-          try{walk(JSON.parse(normalized),quality,mime,depth+1);}catch(e){}
+          try{walk(JSON.parse(normalized),quality,mime,depth+1,inheritedBytes);}catch(e){}
         }
         return;
       }
-      if(Array.isArray(value)){value.slice(0,160).forEach(item=>walk(item,quality,mime,depth+1));return;}
+      if(Array.isArray(value)){value.slice(0,160).forEach(item=>walk(item,quality,mime,depth+1,inheritedBytes));return;}
       if(typeof value!=='object')return;
+      const localBytes=explicitSize(value)||inheritedBytes;
       let localMime=mime;const qualityValues=[];
       Object.keys(value).slice(0,100).forEach(key=>{
         const val=value[key],normalizedKey=key.replace(/[_-]/g,'').toLowerCase();
@@ -159,8 +176,8 @@ internal object BrowserMediaCapture {
           const normalized=child.replace(/\\u002f/gi,'/').replace(/\\\//g,'/').replace(/\\u0026/gi,'&').replace(/&amp;/gi,'&');
           const sourceKey=/^(?:src|file|url|source|stream|manifest|playlist|hls|dash|video|media|link|srcurl|videourl|sources|files|renditions|variants|tracks)$/.test(normalizedKey);
           if(mediaFormat(normalized)||localMime||(sourceKey&&qualityFrom(keyQuality!=='Qualidade não informada'?keyQuality:current,'')!=='Qualidade não informada'))
-            walk(normalized,keyQuality!=='Qualidade não informada'?keyQuality:current,localMime,depth+1);
-        }else if(typeof child==='object'&&child!==null)walk(child,current,localMime,depth+1);
+            walk(normalized,keyQuality!=='Qualidade não informada'?keyQuality:current,localMime,depth+1,localBytes);
+        }else if(typeof child==='object'&&child!==null)walk(child,current,localMime,depth+1,localBytes);
       });
     };
     walk(root,inherited,mimeHint,0);
