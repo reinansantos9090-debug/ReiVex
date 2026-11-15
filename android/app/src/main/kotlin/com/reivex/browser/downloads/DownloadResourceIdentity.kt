@@ -91,7 +91,10 @@ internal object DownloadResourceIdentity {
             "video/3gpp" -> "3gp"
             else -> null
         }
-        return clean(if(ext !in extensions && inferred!=null)name+"."+inferred else name)
+        // A real .apk/.pdf/.zip filename must not gain a fake .mp4 suffix,
+        // even if the server's Content-Type is generic or incorrect.
+        return clean(if(ext !in extensions && !DownloadFileKind.isOrdinaryFileName(name) &&
+            inferred!=null) name+"."+inferred else name)
             .takeIf(String::isNotBlank)
     }
 
