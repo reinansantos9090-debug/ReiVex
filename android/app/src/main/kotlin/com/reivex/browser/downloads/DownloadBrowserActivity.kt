@@ -26,6 +26,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -651,24 +652,26 @@ class DownloadBrowserActivity: ComponentActivity() {
                             Icons.Outlined.Home,
                             "Início do navegador",
                             modifier=Modifier.size(26.dp),
-                            tint=MaterialTheme.colorScheme.primary,
+                            tint=MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    OutlinedButton(
+                    Surface(
                         onClick={captureTab();onTabs()},
-                        modifier=Modifier.height(44.dp),
-                        shape=CircleShape,
-                        contentPadding=PaddingValues(horizontal=12.dp,vertical=8.dp),
+                        modifier=Modifier.size(44.dp),
+                        shape=RoundedCornerShape(10.dp),
+                        color=MaterialTheme.colorScheme.background,
+                        contentColor=MaterialTheme.colorScheme.onSurfaceVariant,
+                        border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),
                     ){
-                        Icon(Icons.Outlined.Tab,"Guias",modifier=Modifier.size(22.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("${tabs.size}",style=MaterialTheme.typography.labelMedium)
+                        Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){
+                            Text("${tabs.size}",style=MaterialTheme.typography.labelSmall)
+                        }
                     }
                     IconButton(
-                        onClick={captureTab();onNewTab()},
+                        onClick={startActivity(Intent(this@DownloadBrowserActivity,DownloadsActivity::class.java))},
                         modifier=Modifier.size(56.dp),
                     ){
-                        Icon(Icons.Filled.Add,"Nova guia",modifier=Modifier.size(28.dp))
+                        Icon(Icons.Filled.Download,"Downloads",modifier=Modifier.size(28.dp))
                     }
                 }
             }
