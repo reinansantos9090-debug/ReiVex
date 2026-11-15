@@ -103,7 +103,8 @@ object DownloadIdentity {
 
         val number = episode ?: return ""
         if (series.isBlank()) return ""
-        val formattedSeries = series.split(Regex("""\s+""")).joinToString(" ") { word ->
+        val canonicalSeries=series.replace(Regex("""(?i)^re[ -]+zero\\b"""),"Re:Zero")
+        val formattedSeries = canonicalSeries.split(Regex("""\s+""")).joinToString(" ") { word ->
             if (word.equals("re:zero", true)) "Re:Zero"
             else word.replaceFirstChar { it.titlecase() }
         }.take(150).trim()
@@ -144,7 +145,7 @@ object DownloadIdentity {
         val fromContext=DownloadResourceIdentity.contextualEpisodeName(url)
         val episode=episodeTitleFromPage(sharedTitle,url).takeIf {
             episodeMarker.containsMatchIn(it) && usefulPageTitle(it)
-        } ?: fromContext ?: episodeTitleFromPage("",refererUrl).takeIf {
+        } ?: fromContext ?: episodeTitleFromPage(sharedTitle,refererUrl).takeIf {
             episodeMarker.containsMatchIn(it) && usefulPageTitle(it)
         }
         if (!episode.isNullOrBlank()) {
