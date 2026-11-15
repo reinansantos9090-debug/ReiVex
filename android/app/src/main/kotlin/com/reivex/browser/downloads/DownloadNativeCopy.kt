@@ -34,9 +34,10 @@ internal object DownloadNativeCopy {
                 FileInputStream(source).use { input ->
                     FileOutputStream(descriptor.fileDescriptor).use { output ->
                         val buffer = ByteArray(BUFFER)
+                        var nativeAllowed = available
                         while (true) {
                             currentCoroutineContext().ensureActive()
-                            val bytes = if (available)
+                            val bytes = if (nativeAllowed)
                                 runCatching { sendChunk(input.fd, output.fd, CHUNK) }.getOrDefault(-2L)
                             else -2L
                             if (bytes == 0L) break
@@ -44,6 +45,7 @@ internal object DownloadNativeCopy {
                                 total += bytes
                                 continue
                             }
+                            nativeAllowed = false
                             // Read/write both share the same file descriptors,
                             // so a partial sendfile + fallback resumes safely.
                             val count = input.read(buffer)
