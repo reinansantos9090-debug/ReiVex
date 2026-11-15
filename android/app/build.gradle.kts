@@ -15,6 +15,11 @@ android {
         buildConfig = true
         compose = true
     }
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
+    }
 
     testOptions {
         unitTests.isIncludeAndroidResources = true
@@ -80,6 +85,8 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.11.1")
     implementation("androidx.media3:media3-transformer:1.11.1")
     implementation("androidx.media3:media3-effect:1.11.1")
+    // Native FFmpeg/JNI for copy-only remux, using the minimal LGPL variant.
+    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-min:8.1.9")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     testImplementation("junit:junit:4.13.2")
