@@ -21,6 +21,17 @@ android {
         }
     }
 
+    // GitHub-distributed APKs opt into ZIP-compressed native libraries to
+    // minimize download size. Local builds and future app bundles retain the
+    // default direct-load packaging (smaller installed storage footprint).
+    // Android extracts these libraries at install time; codecs are unchanged.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = providers.gradleProperty("reivexCompactNativeApk")
+                .orNull == "true"
+        }
+    }
+
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
@@ -31,6 +42,11 @@ android {
         targetSdk = 36
         versionCode = providers.gradleProperty("reivexBuildNumber").orNull?.toIntOrNull()?.takeIf { it >= 2 } ?: 2
         versionName = providers.gradleProperty("reivexBuildVersion").orNull?.takeIf { it.isNotBlank() } ?: "0.2.1"
+        // Both the production APK and on-device preview run on arm64.
+        // Do not bundle the emulator's x86_64 FFmpeg libraries in the APK.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -50,7 +66,27 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            // Compact GitHub preview, while retaining an unminified local
+            // Android Studio debug build for readable stack traces.
+            if (providers.gradleProperty("reivexCompactDebug").orNull == "true") {
+                isMinifyEnabled = true
+                isShrinkResources = true
+                proguardFiles(
+                    getDefaultProguardFile("proguard-android-optimize.txt"),
+                    "proguard-rules.pro"
+                )
+            }
+        }
         getByName("release") {
+            // R8 removes unreachable Compose/AndroidX code and app resources.
+            // Native FFmpeg and browser filtering are retained.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             // Release APKs must never silently inherit a changing debug key.
             // Only PR preview artifacts opt in to debug signing explicitly.
             signingConfig = when {
@@ -60,9 +96,6 @@ android {
                     System.getenv("GITHUB_EVENT_NAME") == "pull_request" ->
                     signingConfigs.getByName("debug")
                 else -> null // Local release without a key remains unsigned, not debug-signed.
-            }
-            ndk {
-                abiFilters += "arm64-v8a"
             }
         }
     }
