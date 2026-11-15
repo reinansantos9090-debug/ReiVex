@@ -2,12 +2,12 @@ package com.reivex.browser.downloads
 
 import android.content.Context
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileDescriptor
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
@@ -25,20 +25,21 @@ internal object DownloadNativeCopy {
         true
     }.getOrDefault(false)
 
-    private external fun sendChunk(input: FileDescriptor, output: FileDescriptor, bytes: Long): Long
+    private external fun sendChunk(input: Int, output: Int, bytes: Long): Long
 
     suspend fun copyToUri(context: Context, source: File, destination: Uri): Long =
         withContext(Dispatchers.IO) {
             var total = 0L
             context.contentResolver.openFileDescriptor(destination, "rw")?.use { descriptor ->
-                FileInputStream(source).use { input ->
-                    FileOutputStream(descriptor.fileDescriptor).use { output ->
+                ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY).use { inputDescriptor ->
+                    FileInputStream(inputDescriptor.fileDescriptor).use { input ->
+                        FileOutputStream(descriptor.fileDescriptor).use { output ->
                         val buffer = ByteArray(BUFFER)
                         var nativeAllowed = available
                         while (true) {
                             currentCoroutineContext().ensureActive()
                             val bytes = if (nativeAllowed)
-                                runCatching { sendChunk(input.fd, output.fd, CHUNK) }.getOrDefault(-2L)
+                                runCatching { sendChunk(inputDescriptor.fd, descriptor.fd, CHUNK) }.getOrDefault(-2L)
                             else -2L
                             if (bytes == 0L) break
                             if (bytes > 0L) {
@@ -55,6 +56,7 @@ internal object DownloadNativeCopy {
                         }
                         output.flush()
                         output.fd.sync()
+                        }
                     }
                 }
             } ?: throw IOException("Não foi possível abrir MP4 de destino")
