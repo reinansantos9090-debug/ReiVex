@@ -34,6 +34,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Tab
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -641,9 +643,33 @@ class DownloadBrowserActivity: ComponentActivity() {
                         if(tab.home){tab.home=false;address=tab.url;browser.onResume()}else browser.goBack()
                     }){Icon(Icons.Filled.ArrowBack,"Voltar página")}
                     IconButton(enabled=forwardAvailable && !tab.home,onClick={browser.goForward()}){Icon(Icons.Filled.ArrowForward,"Avançar página")}
-                    IconButton(onClick={captureTab();tab.home=true;address="";browser.onPause()}){Icon(Icons.Filled.Home,"Início do navegador")}
-                    OutlinedButton(onClick={captureTab();onTabs()}){Icon(Icons.Filled.Tab,"Guias");Spacer(Modifier.width(6.dp));Text("${tabs.size}")}
-                    IconButton(onClick={captureTab();onNewTab()}){Icon(Icons.Filled.Add,"Nova guia")}
+                    IconButton(
+                        onClick={captureTab();tab.home=true;address="";browser.onPause()},
+                        modifier=Modifier.size(52.dp),
+                    ){
+                        Icon(
+                            Icons.Outlined.Home,
+                            "Início do navegador",
+                            modifier=Modifier.size(26.dp),
+                            tint=MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    OutlinedButton(
+                        onClick={captureTab();onTabs()},
+                        modifier=Modifier.height(44.dp),
+                        shape=CircleShape,
+                        contentPadding=PaddingValues(horizontal=12.dp,vertical=8.dp),
+                    ){
+                        Icon(Icons.Outlined.Tab,"Guias",modifier=Modifier.size(22.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("${tabs.size}",style=MaterialTheme.typography.labelMedium)
+                    }
+                    IconButton(
+                        onClick={captureTab();onNewTab()},
+                        modifier=Modifier.size(56.dp),
+                    ){
+                        Icon(Icons.Filled.Add,"Nova guia",modifier=Modifier.size(28.dp))
+                    }
                 }
             }
         }
