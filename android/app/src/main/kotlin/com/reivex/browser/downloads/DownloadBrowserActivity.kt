@@ -641,39 +641,77 @@ class DownloadBrowserActivity: ComponentActivity() {
                     }
                 } else AndroidView(factory={browser},modifier=Modifier.weight(1f).fillMaxWidth())
                 if(!keyboardVisible) {
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceEvenly,verticalAlignment=Alignment.CenterVertically) {
-                        IconButton(enabled=backAvailable || (tab.home && tab.url.isNotBlank()),onClick={
-                            if(tab.home){tab.home=false;address=tab.url;browser.onResume()}else browser.goBack()
-                        }){Icon(Icons.Filled.ArrowBack,"Voltar página")}
-                        IconButton(enabled=forwardAvailable && !tab.home,onClick={browser.goForward()}){Icon(Icons.Filled.ArrowForward,"Avançar página")}
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement=Arrangement.SpaceEvenly,
+                        verticalAlignment=Alignment.CenterVertically,
+                    ) {
+                        IconButton(
+                            enabled=backAvailable || (tab.home && tab.url.isNotBlank()),
+                            onClick={
+                                if(tab.home){tab.home=false;address=tab.url;browser.onResume()}
+                                else browser.goBack()
+                            },
+                            modifier=Modifier.size(48.dp),
+                        ){
+                            Icon(
+                                Icons.Filled.ArrowBack,
+                                "Voltar página",
+                                modifier=Modifier.size(24.dp),
+                            )
+                        }
+                        IconButton(
+                            enabled=forwardAvailable && !tab.home,
+                            onClick={browser.goForward()},
+                            modifier=Modifier.size(48.dp),
+                        ){
+                            Icon(
+                                Icons.Filled.ArrowForward,
+                                "Avançar página",
+                                modifier=Modifier.size(24.dp),
+                            )
+                        }
                         IconButton(
                             onClick={captureTab();tab.home=true;address="";browser.onPause()},
-                            modifier=Modifier.size(52.dp),
+                            modifier=Modifier.size(48.dp),
                         ){
                             Icon(
                                 Icons.Outlined.Home,
                                 "Início do navegador",
-                                modifier=Modifier.size(26.dp),
+                                modifier=Modifier.size(24.dp),
                                 tint=MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         Surface(
                             onClick={captureTab();onTabs()},
-                            modifier=Modifier.size(44.dp),
-                            shape=RoundedCornerShape(10.dp),
+                            modifier=Modifier.size(48.dp),
+                            shape=CircleShape,
                             color=MaterialTheme.colorScheme.background,
-                            contentColor=MaterialTheme.colorScheme.onSurfaceVariant,
-                            border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),
+                            contentColor=MaterialTheme.colorScheme.onSurface,
                         ){
                             Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){
-                                Text("${tabs.size}",style=MaterialTheme.typography.labelSmall)
+                                Surface(
+                                    modifier=Modifier.size(32.dp),
+                                    shape=RoundedCornerShape(8.dp),
+                                    color=MaterialTheme.colorScheme.background,
+                                    contentColor=MaterialTheme.colorScheme.onSurface,
+                                    border=BorderStroke(2.dp,MaterialTheme.colorScheme.onSurface),
+                                ){
+                                    Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){
+                                        Text("${tabs.size}",style=MaterialTheme.typography.labelSmall)
+                                    }
+                                }
                             }
                         }
                         IconButton(
                             onClick={startActivity(Intent(this@DownloadBrowserActivity,DownloadsActivity::class.java))},
-                            modifier=Modifier.size(56.dp),
+                            modifier=Modifier.size(48.dp),
                         ){
-                            Icon(Icons.Filled.Download,"Downloads",modifier=Modifier.size(28.dp))
+                            Icon(
+                                Icons.Filled.Download,
+                                "Downloads",
+                                modifier=Modifier.size(24.dp),
+                            )
                         }
                     }
                 }
