@@ -24,6 +24,13 @@ class DownloadOrdinaryFileTest {
             "attachment; filename=\"cloudstream.apk\"","application/octet-stream",false))
         assertEquals("CloudStream.apk",DownloadResourceIdentity.bestName(
             null,apkUrl,"application/octet-stream"))
+        assertEquals("CloudStream.apk",DownloadResourceIdentity.bestName(
+            null,"https://downloads.example/CloudStream",
+            "application/vnd.android.package-archive"))
+        assertEquals("manual.pdf",DownloadResourceIdentity.bestName(
+            null,"https://downloads.example/manual","application/pdf"))
+        assertEquals("archive.zip",DownloadResourceIdentity.bestName(
+            null,"https://downloads.example/archive","application/zip"))
         assertEquals("CloudStream.apk",DownloadIdentity.suggestedName(
             githubPage,apkUrl,"CloudStream.apk"))
     }
