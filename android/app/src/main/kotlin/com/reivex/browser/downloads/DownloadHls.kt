@@ -256,7 +256,7 @@ class DownloadHls(private val context: Context,private val store: DownloadStore)
                                     super.read(buffer,off,len).also {if(it>0)received+=it}
                             }
                             (if(cipher==null) counting else javax.crypto.CipherInputStream(counting,cipher)).use { input ->
-                                val buffer=ByteArray(128*1024)
+                                val buffer=ByteArray(512*1024)
                                 while(true) {
                                     currentCoroutineContext().ensureActive()
                                     if(store.get(id)?.state!="DOWNLOADING") throw Paused()
