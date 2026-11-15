@@ -129,8 +129,25 @@ jobs:
         if: steps.signing_mode.outputs.mode == 'debug_preview'
         run: >-
           gradle -p android --no-daemon :app:assembleDebug
+          -PreivexCompactDebug=true
           -PreivexBuildNumber="$GITHUB_RUN_NUMBER"
           -PreivexBuildVersion="0.1.${GITHUB_RUN_NUMBER}"
+
+      # Normal Android Studio debug builds remain unminified for diagnostics.
+      # The GitHub debug preview gets R8 to minimize the shipped APK instead.
+      - name: Build compact ReiVex debug APK for PR preview
+        if: github.event_name == 'pull_request'
+        run: >-
+          gradle -p android --no-daemon :app:assembleDebug
+          -PreivexCompactDebug=true
+          -PreivexBuildNumber="$GITHUB_RUN_NUMBER"
+          -PreivexBuildVersion="0.1.$GITHUB_RUN_NUMBER"
+
+      - name: Report APK sizes and included native ABIs
+        run: >-
+          python3 scripts/report_apk_size.py
+          android/app/build/outputs/apk/release/app-release.apk
+          android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Verify ReiVex package and launcher
         shell: bash
