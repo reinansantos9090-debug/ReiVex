@@ -47,6 +47,83 @@ internal object DownloadMp4Integrity {
         }
     }
 
+    /**
+     * Fast final check for an MP4 already remuxed by native FFmpeg with
+     * -xerror. FFmpeg has consumed every packet and constructed the index;
+     * a second whole-file read adds I/O without decoding the bitstream.
+     *
+     * Validate stream presence, declared duration, and seekable video/audio
+     * samples near the beginning, middle and end. Unknown durations or
+     * suspicious timelines use the exhaustive verifier instead.
+     */
+    suspend fun verifyFast(
+        context: Context,
+        output: Uri,
+        expectedAudio: Boolean?,
+        expectedDurationUs: Long?
+    ): Boolean = withContext(Dispatchers.IO) {
+        val extractor=MediaExtractor()
+        try {
+            extractor.setDataSource(context,output,null)
+            val formats=(0 until extractor.trackCount).map(extractor::getTrackFormat)
+            val mimes=formats.map {it.getString(MediaFormat.KEY_MIME).orEmpty()}
+            val videoIndices=mimes.indices.filter {mimes[it].startsWith("video/")}
+            val audioIndices=mimes.indices.filter {mimes[it].startsWith("audio/")}
+            if(videoIndices.isEmpty() || expectedAudio==true && audioIndices.isEmpty())
+                return@withContext false
+            val duration=videoIndices.mapNotNull {i ->
+                val format=formats[i]
+                if(format.containsKey(MediaFormat.KEY_DURATION))
+                    format.getLong(MediaFormat.KEY_DURATION).takeIf {it>0L}
+                else null
+            }.maxOrNull() ?: return@withContext false
+            if(expectedDurationUs!=null && expectedDurationUs>0L) {
+                val tolerance=max(12_000_000L,expectedDurationUs/25L)
+                if(abs(duration-expectedDurationUs)>tolerance)
+                    return@withContext false
+            }
+            (videoIndices+audioIndices).forEach(extractor::selectTrack)
+            val positions=listOf(0L,duration/3L,duration*2L/3L,
+                (duration-1_000_000L).coerceAtLeast(0L)).distinct()
+            val observedAudio=mutableSetOf<Int>()
+            for((checkpointIndex,position) in positions.withIndex()) {
+                currentCoroutineContext().ensureActive()
+                extractor.seekTo(position,MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+                var observedVideo=false
+                var firstTime=-1L
+                for(step in 0 until 128) {
+                    val sampleIndex=extractor.sampleTrackIndex
+                    if(sampleIndex<0) break
+                    val time=extractor.sampleTime
+                    if(time<0L || extractor.sampleSize<=0L ||
+                        (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_ENCRYPTED)!=0)
+                        return@withContext false
+                    if(firstTime<0L) firstTime=time
+                    if(sampleIndex in videoIndices) observedVideo=true
+                    if(sampleIndex in audioIndices) observedAudio+=sampleIndex
+                    if(!extractor.advance()) break
+                }
+                if(!observedVideo || firstTime<0L) return@withContext false
+                // The first playable frame must not start many seconds
+                // after opening the file; tolerate normal GOP keyframes.
+                if(checkpointIndex==0 && firstTime>5_000_000L)
+                    return@withContext false
+                if(position>0L && abs(position-firstTime)>45_000_000L)
+                    return@withContext false
+            }
+            // Empty audio tracks are not an acceptable successful remux.
+            if(expectedAudio==true && !observedAudio.containsAll(audioIndices))
+                return@withContext false
+            true
+        } catch(cancelled: CancellationException) {
+            throw cancelled
+        } catch(_: Exception) {
+            false
+        } finally {
+            extractor.release()
+        }
+    }
+
     private class Track(val mime:String) {
         var samples=0L
         var firstUs=Long.MAX_VALUE
