@@ -21,6 +21,17 @@ android {
         }
     }
 
+    // GitHub-distributed APKs opt into ZIP-compressed native libraries to
+    // minimize download size. Local builds and future app bundles retain the
+    // default direct-load packaging (smaller installed storage footprint).
+    // Android extracts these libraries at install time; codecs are unchanged.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = providers.gradleProperty("reivexCompactNativeApk")
+                .orNull == "true"
+        }
+    }
+
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
