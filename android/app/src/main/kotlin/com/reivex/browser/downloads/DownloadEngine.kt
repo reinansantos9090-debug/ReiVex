@@ -431,21 +431,50 @@ class DownloadEngine(private val context: Context) {
             }
             if(needsRemux) {
                 if(target.isPublic) {
-                    val candidate=target.sibling("remux.mp4")
-                    store.mutate(id){it.put("remuxCandidateUri",candidate.toString())}
-                    if(DownloadTsRemux.tryRemux(context,target.readUri(),candidate) &&
-                        DownloadMp4Integrity.verify(context,candidate,expectedAudio,expectedDurationUs)) {
-                        publicRemux=candidate
+                    // Fast first path: FFmpeg's native muxer parses the entire
+                    // original and writes directly to the pending MediaStore/
+                    // SAF candidate, without private full-episode staging.
+                    val fastCandidate=target.sibling("native.mp4")
+                    store.mutate(id){it.put("remuxCandidateUri",fastCandidate.toString())}
+                    if(DownloadFfmpegRemux.tryRemux(context,target.readUri(),fastCandidate) &&
+                        DownloadMp4Integrity.verifyFast(context,fastCandidate,expectedAudio,expectedDurationUs)) {
+                        publicRemux=fastCandidate
                     } else {
-                        target.discard(candidate)
-                        store.mutate(id){it.remove("remuxCandidateUri")}
+                        target.discard(fastCandidate)
+                        // Android media muxer remains the conservative fallback
+                        // if FFmpeg/SAF/codec combinations are unsupported.
+                        val androidCandidate=target.sibling("remux.mp4")
+                        store.mutate(id){it.put("remuxCandidateUri",androidCandidate.toString())}
+                        if(DownloadTsRemux.tryRemux(context,target.readUri(),androidCandidate) &&
+                            DownloadMp4Integrity.verify(context,androidCandidate,expectedAudio,expectedDurationUs)) {
+                            publicRemux=androidCandidate
+                        } else {
+                            target.discard(androidCandidate)
+                            store.mutate(id){it.remove("remuxCandidateUri")}
+                        }
                     }
                 } else {
-                    val remux=DownloadTsRemux.tryRemux(context,file)
-                    if(remux!=null) {
-                        if(DownloadMp4Integrity.verify(context,Uri.fromFile(remux),expectedAudio,expectedDurationUs))
-                            privateRemux=remux
-                        else remux.delete()
+                    // Existing legacy transfer: maintain the same storage
+                    // reserve requirements and preserve the original .part.
+                    val reserve=32L*1024*1024
+                    val free=runCatching {StatFs(file.parentFile!!.absolutePath).availableBytes}.getOrDefault(0L)
+                    if(file.isFile && file.length()>0L &&
+                        file.length()<=(Long.MAX_VALUE-reserve)/2 &&
+                        free>=file.length()*2+reserve) {
+                        val fastFile=File(file.parentFile,file.name+".native.mp4")
+                        fastFile.delete()
+                        if(DownloadFfmpegRemux.tryRemux(context,Uri.fromFile(file),Uri.fromFile(fastFile)) &&
+                            DownloadMp4Integrity.verifyFast(context,Uri.fromFile(fastFile),expectedAudio,expectedDurationUs)) {
+                            privateRemux=fastFile
+                        } else fastFile.delete()
+                    }
+                    if(privateRemux==null) {
+                        val remux=DownloadTsRemux.tryRemux(context,file)
+                        if(remux!=null) {
+                            if(DownloadMp4Integrity.verify(context,Uri.fromFile(remux),expectedAudio,expectedDurationUs))
+                                privateRemux=remux
+                            else remux.delete()
+                        }
                     }
                 }
             }
@@ -463,20 +492,9 @@ class DownloadEngine(private val context: Context) {
                         val candidate=target.sibling("transcoded.mp4")
                         store.mutate(id){it.put("remuxCandidateUri",candidate.toString())}
                         try {
-                            val output=context.contentResolver.openOutputStream(candidate,"wt")
-                                ?: throw IOException("Não foi possível salvar MP4 convertido")
-                            output.use { stream ->
-                                converted.inputStream().use { input ->
-                                    val buffer=ByteArray(256*1024)
-                                    while(true) {
-                                        currentCoroutineContext().ensureActive()
-                                        val read=input.read(buffer)
-                                        if(read<0) break
-                                        stream.write(buffer,0,read)
-                                    }
-                                }
-                                stream.flush()
-                            }
+                            // Kernel sendfile where supported; a bounded
+                            // 512 KiB fallback for document providers.
+                            DownloadNativeCopy.copyToUri(context,converted,candidate)
                             if(target.sizeOf(candidate)!=converted.length() ||
                                 !DownloadMp4Integrity.verify(context,candidate,expectedAudio,expectedDurationUs))
                                 throw IOException("O MP4 convertido não passou na verificação final de áudio e vídeo")
