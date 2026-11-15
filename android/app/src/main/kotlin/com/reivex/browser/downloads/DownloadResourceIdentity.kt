@@ -89,7 +89,9 @@ internal object DownloadResourceIdentity {
             "video/x-ms-wmv" -> "wmv"
             "video/x-flv" -> "flv"
             "video/3gpp" -> "3gp"
-            else -> null
+            // Generic downloads must also get their real extension when
+            // Content-Disposition and the URL have a name without a suffix.
+            else -> DownloadFileKind.ordinaryExtensionFromMime(contentType)
         }
         // A real .apk/.pdf/.zip filename must not gain a fake .mp4 suffix,
         // even if the server's Content-Type is generic or incorrect.
