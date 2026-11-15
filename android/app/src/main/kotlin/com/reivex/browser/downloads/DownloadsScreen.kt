@@ -365,7 +365,9 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
     initialEstimatedSize:Long? = null) {
     val context=LocalContext.current
     var url by remember { mutableStateOf(initialUrl) }
-    var name by remember { mutableStateOf(editing?.name ?: DownloadIdentity.suggestedName(initialTitle,initialUrl,initialName)) }
+    val initialReferer=initialHeaders.entries.firstOrNull { it.key.equals("referer",true) }?.value.orEmpty()
+    var name by remember { mutableStateOf(editing?.name ?: DownloadIdentity.suggestedName(
+        initialTitle,initialUrl,initialName,initialReferer)) }
     // Names passed by the ReiVex browser are deliberate; a CDN header must not replace them.
     // A fallback CDN name is not a deliberate user choice. Allow a meaningful
     // Content-Disposition to correct it when the server responds.
@@ -378,7 +380,7 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
     var cookie by remember { mutableStateOf(initialHeaders.entries.firstOrNull { it.key.equals("cookie",true) }?.value.orEmpty()) }
     var user by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var referer by remember { mutableStateOf(initialHeaders.entries.firstOrNull { it.key.equals("referer",true) }?.value.orEmpty()) }
+    var referer by remember { mutableStateOf(initialReferer) }
     var login by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var originalHeaders by remember { mutableStateOf(initialHeaders) }
@@ -582,7 +584,7 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
                             }
                             url=next
                             if(!nameTouched && editing==null)
-                                name=DownloadIdentity.suggestedName(initialTitle,next.trim(),"")
+                                name=DownloadIdentity.suggestedName(initialTitle,next.trim(),"",referer)
                         },
                         modifier=Modifier.fillMaxWidth(),
                         enabled=canEdit,
@@ -661,7 +663,12 @@ internal fun DownloadDialog(initialUrl: String,initialHeaders: Map<String,String
                         }
                     }
                     if(!sizeLoading && (sizeResult?.bytes ?: 0L)<=0L && url.isNotBlank()) {
-                        Text("Não foi possível consultar o tamanho. Toque em atualizar para tentar novamente.",
+                        val sizeMessage=when(sizeResult?.source) {
+                            "signed-http-401" -> "O servidor exige autenticação. Abra novamente o vídeo e capture o link."
+                            "signed-http-403" -> "O servidor recusou o link; ele pode ter expirado. Gere um link novo na página."
+                            else -> "Não foi possível consultar o tamanho. Toque em atualizar para tentar novamente."
+                        }
+                        Text(sizeMessage,
                             color=Color.LightGray,style=MaterialTheme.typography.bodySmall)
                     }
                     TextField(

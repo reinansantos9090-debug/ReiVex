@@ -191,19 +191,27 @@ internal object DownloadSizeProbe {
             catch(_: Exception) { Result(null,false,"unknown",hint) }
         }
 
-    /** Signed URLs must not receive speculative GETs; HEAD never reads a media body. */
+    /**
+     * Keep generic signed URLs HEAD-only. AWS SigV4 S3 links signed for GET
+     * reject HEAD, so a narrowly validated one-byte Range GET reads only the
+     * authoritative response headers and immediately disconnects.
+     */
     suspend fun inspectSignedHeaders(url: String, headers: Map<String,String>): Result =
         withContext(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
             try {
                 trustedUrlLength(url)?.let { return@withContext Result(it,true,"googlevideo-clen") }
-                connection=DownloadHttp.connect(url,headers,0,null,method="HEAD",
+                val boundedS3Range=DownloadSignedLinkPolicy.allowsBoundedS3RangeProbe(url)
+                connection=DownloadHttp.connect(url,headers,0,null,
+                    method=if(boundedS3Range)"GET" else "HEAD",
+                    probeRange=if(boundedS3Range)"bytes=0-0" else null,
+                    closeAfterResponse=boundedS3Range,
                     connectTimeoutMs=NETWORK_TIMEOUT_MS,readTimeoutMs=NETWORK_TIMEOUT_MS,
                     redirectCookieProvider=DownloadSessionHeaders::cookieForTarget)
                 val c=connection
                 val bytes=directLength(c.responseCode,c.getHeaderFieldLong("Content-Length",-1),
                     c.getHeaderField("Content-Range"),c.contentEncoding,c.contentType)
-                Result(bytes,bytes!=null,"signed-head",
+                Result(bytes,bytes!=null,if(boundedS3Range)"signed-range" else "signed-head",
                     DownloadResourceIdentity.bestName(c.getHeaderField("Content-Disposition"),
                         c.url.toString(),c.contentType),c.contentType)
             } catch(c: kotlinx.coroutines.CancellationException) { throw c }
