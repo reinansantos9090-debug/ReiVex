@@ -30,6 +30,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -241,10 +242,24 @@ initialCandidates:List<DownloadSourceSelection.Candidate> = emptyList()) {
                     }
                     Box(Modifier.padding(start=16.dp)) {
                         val percent=downloadPercent(item)
-                        if(percent==null && item.state=="DOWNLOADING") CircularProgressIndicator(Modifier.size(28.dp),color=Color.White,strokeWidth=2.dp)
-                        else Canvas(Modifier.size(28.dp)) {
-                            drawCircle(Color.White,style=Stroke(1.8.dp.toPx()))
-                            if(percent!=null && percent>0)drawArc(Color.White,-90f,360f*percent/100f,true)
+                        when {
+                            // Reuse the exact ReiVex completion glyph shown in
+                            // notifications, in both Todos and Completos.
+                            item.state=="COMPLETE" -> Icon(
+                                painter=painterResource(R.drawable.ic_reivex_download_done),
+                                contentDescription="Download concluído",
+                                modifier=Modifier.size(28.dp),
+                                tint=Color.White
+                            )
+                            // 100% received still requires verification and
+                            // publishing before the download is complete.
+                            item.state in setOf("VERIFYING","SAVING") ||
+                                (item.state=="DOWNLOADING" && (percent==null || percent>=100)) ->
+                                CircularProgressIndicator(Modifier.size(28.dp),color=Color.White,strokeWidth=2.dp)
+                            else -> Canvas(Modifier.size(28.dp)) {
+                                drawCircle(Color.White,style=Stroke(1.8.dp.toPx()))
+                                if(percent!=null && percent>0)drawArc(Color.White,-90f,360f*percent/100f,true)
+                            }
                         }
                         DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
                             if(item.state in DownloadState.pending && item.state!="SAVING") DropdownMenuItem(text={Text("Pausar")},leadingIcon={Icon(Icons.Filled.Pause,null)},onClick={menu=false;action(item,"pause")})
