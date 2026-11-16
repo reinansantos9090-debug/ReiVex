@@ -244,13 +244,14 @@ initialCandidates:List<DownloadSourceSelection.Candidate> = emptyList()) {
                     Box(Modifier.padding(start=16.dp)) {
                         val percent=downloadPercent(item)
                         when {
-                            // Reuse the exact ReiVex completion glyph shown in
-                            // notifications, in both Todos and Completos.
+                            // User-selected look: a bright, outlined circular
+                            // checkmark, separate from the notification's icon.
+                            // Shared by the Todos and Completos lists.
                             item.state=="COMPLETE" -> Icon(
-                                painter=painterResource(R.drawable.ic_reivex_download_done),
+                                painter=painterResource(R.drawable.ic_reivex_download_complete_circle),
                                 contentDescription="Download concluído",
                                 modifier=Modifier.size(28.dp),
-                                tint=Color.White
+                                tint=Color.Unspecified
                             )
                             // 100% received still requires verification and
                             // publishing before the download is complete.
