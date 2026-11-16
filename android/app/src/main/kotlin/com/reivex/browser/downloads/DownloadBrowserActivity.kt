@@ -24,6 +24,7 @@ import androidx.webkit.ServiceWorkerControllerCompat
 import androidx.webkit.WebViewFeature
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -146,6 +147,9 @@ class DownloadBrowserActivity: ComponentActivity() {
         var rememberedMode by remember {mutableStateOf(BrowserAdBlock.mode)}
         var address by remember { mutableStateOf(if(tab.home)"" else tab.url) }
         var homeSearch by remember(tab.id) { mutableStateOf("") }
+        val startPageStore = remember { BrowserStartPageStore(applicationContext) }
+        var recents by remember { mutableStateOf(startPageStore.recents()) }
+        var favorites by remember { mutableStateOf(startPageStore.favorites()) }
         var backAvailable by remember {mutableStateOf(false)}
         var forwardAvailable by remember {mutableStateOf(false)}
         var restoreScroll by remember {mutableStateOf(!tab.saved.isEmpty)}
@@ -358,6 +362,10 @@ class DownloadBrowserActivity: ComponentActivity() {
                         if(!tab.home)address=url
                         progress=100
                         tab.url=url;title=view.title.orEmpty();tab.title=title.ifBlank {BrowserAdBlock.host(url)}
+                        if (!tab.home && error.isBlank()) {
+                            startPageStore.recordVisit(url, tab.title)
+                            recents = startPageStore.recents()
+                        }
                         backAvailable=view.canGoBack();forwardAvailable=view.canGoForward()
                         if(restoreScroll) {restoreScroll=false;view.post {view.scrollTo(tab.scrollX,tab.scrollY)}}
                     }
@@ -518,14 +526,61 @@ class DownloadBrowserActivity: ComponentActivity() {
         }
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                    OutlinedTextField(address,{address=it},singleLine=true,modifier=Modifier.weight(1f),label={Text("Endereço")},
-                        keyboardOptions=KeyboardOptions(imeAction=ImeAction.Go),keyboardActions=KeyboardActions(onGo={
-                            val destination=BrowserAddress.resolve(address)
-                            if(destination==null)error="Endereço inválido"
-                            else {error="";tab.home=false;browser.onResume();browser.loadUrl(destination)}
-                        }))
-                    IconButton(enabled=protectionReady && !tab.home && !preparingSiteDownload,onClick={
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp).height(58.dp),
+                    shape = CircleShape,
+                    color = Color(0xFF111214),
+                    border = BorderStroke(1.dp, Color(0xFF55585E)),
+                ) {
+                    Row(
+                        Modifier.fillMaxSize().background(
+                            androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                listOf(Color(0xFF101113), Color(0xFF151619), Color(0xFF101113))
+                            )
+                        ).padding(start = 13.dp, end = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Filled.Language, "Endereço da web",
+                            modifier = Modifier.size(24.dp), tint = Color.White)
+                        Spacer(Modifier.width(13.dp))
+                        BasicTextField(
+                            value = address,
+                            onValueChange = { address = it },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                color = Color.White, fontSize = 15.sp
+                            ),
+                            cursorBrush = SolidColor(Color.White),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                            keyboardActions = KeyboardActions(onGo = {
+                                val destination = BrowserAddress.resolve(address)
+                                if (destination == null) error = "Endereço inválido"
+                                else {
+                                    error = ""
+                                    tab.home = false
+                                    browser.onResume()
+                                    browser.loadUrl(destination)
+                                }
+                            }),
+                            decorationBox = { inner ->
+                                Box(contentAlignment = Alignment.CenterStart) {
+                                    if (address.isBlank()) Text(
+                                        "Endereço ou pesquisa na web",
+                                        color = Color(0xFFCED0D4),
+                                        fontSize = 14.sp,
+                                        maxLines = 1,
+                                    )
+                                    inner()
+                                }
+                            },
+                        )
+                        Box(Modifier.width(1.dp).height(29.dp).background(Color(0xFF55585E)))
+                        IconButton(enabled=protectionReady && !preparingSiteDownload,onClick={
+                            if (tab.home) {
+                                startActivity(Intent(this@DownloadBrowserActivity,DownloadsActivity::class.java))
+                                return@IconButton
+                            }
                         discoveryGeneration++
                         hlsJobs.forEach {it.cancel()};hlsJobs.clear();inspectedHls.clear();discoveringHls=0
                         discoveryRequested=true
@@ -555,14 +610,30 @@ class DownloadBrowserActivity: ComponentActivity() {
                             } },2600)
                         }
                     }) { if(preparingSiteDownload)CircularProgressIndicator(Modifier.size(20.dp),strokeWidth=2.dp)
-                        else Icon(Icons.Filled.Download,"Vídeos encontrados") }
-                    Box {
-                        IconButton(onClick={menu=true}) {Icon(Icons.Filled.MoreVert,"Menu do navegador")}
-                        DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
-                            DropdownMenuItem(text={Text("Nova guia")},onClick={menu=false;captureTab();onNewTab()})
-                            DropdownMenuItem(text={Text("Downloads")},onClick={menu=false;startActivity(Intent(this@DownloadBrowserActivity,DownloadsActivity::class.java))})
-                            DropdownMenuItem(text={Text("Configurações")},onClick={menu=false;showSettings=true})
-                            DropdownMenuItem(text={Text("Recarregar")},onClick={menu=false;error="";browser.reload()})
+                        else Icon(Icons.Filled.Download,"Downloads e vídeos",tint=Color.White) }
+                        Box {
+                            IconButton(onClick={menu=true}) {
+                                Icon(Icons.Filled.MoreVert,"Menu do navegador",tint=Color.White)
+                            }
+                            DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
+                                DropdownMenuItem(text={Text("Nova guia")},onClick={menu=false;captureTab();onNewTab()})
+                                if (!tab.home && tab.url.startsWith("http")) {
+                                    val saved = favorites.any { it.url == tab.url }
+                                    DropdownMenuItem(
+                                        text={Text(if(saved) "Remover dos favoritos" else "Adicionar aos favoritos")},
+                                        onClick={
+                                            menu=false
+                                            startPageStore.toggleFavorite(
+                                                BrowserStartLink(tab.url, tab.title)
+                                            )
+                                            favorites=startPageStore.favorites()
+                                        },
+                                    )
+                                }
+                                DropdownMenuItem(text={Text("Downloads")},onClick={menu=false;startActivity(Intent(this@DownloadBrowserActivity,DownloadsActivity::class.java))})
+                                DropdownMenuItem(text={Text("Configurações")},onClick={menu=false;showSettings=true})
+                                if (!tab.home) DropdownMenuItem(text={Text("Recarregar")},onClick={menu=false;error="";browser.reload()})
+                            }
                         }
                     }
                 }
@@ -571,76 +642,37 @@ class DownloadBrowserActivity: ComponentActivity() {
                 // Startup diagnostics are shown in Settings, never over the visited page.
                 if(!protectionReady) Box(Modifier.weight(1f).fillMaxWidth(),contentAlignment=Alignment.Center) {
                     CircularProgressIndicator()
-                } else if(tab.home) Column(
-                    Modifier.weight(1f).fillMaxWidth().padding(horizontal=24.dp,vertical=32.dp),
-                    verticalArrangement=Arrangement.Top,
-                    horizontalAlignment=Alignment.CenterHorizontally,
-                ) {
-                    Spacer(Modifier.height(24.dp))
-                    Text(
-                        "ReiVex",
-                        style=MaterialTheme.typography.headlineLarge.copy(
-                            fontFamily=FontFamily.SansSerif,
-                            fontSize=42.sp,
-                            fontWeight=FontWeight.Medium,
-                            letterSpacing=0.sp,
-                            color=MaterialTheme.colorScheme.onBackground,
-                        ),
-                    )
-                    Spacer(Modifier.height(28.dp))
-                    Surface(
-                        modifier=Modifier.fillMaxWidth().height(62.dp),
-                        shape=CircleShape,
-                        color=MaterialTheme.colorScheme.surfaceContainerLow,
-                        border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),
-                        shadowElevation=6.dp,
-                    ) {
-                        Row(
-                            Modifier.fillMaxSize().padding(start=20.dp,end=8.dp),
-                            verticalAlignment=Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Filled.Search,
-                                contentDescription=null,
-                                modifier=Modifier.size(22.dp),
-                                tint=MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(Modifier.width(14.dp))
-                            BasicTextField(
-                                value=homeSearch,
-                                onValueChange={homeSearch=it},
-                                modifier=Modifier.weight(1f),
-                                singleLine=true,
-                                textStyle=MaterialTheme.typography.bodyLarge.copy(
-                                    color=MaterialTheme.colorScheme.onSurface,
-                                ),
-                                cursorBrush=SolidColor(MaterialTheme.colorScheme.primary),
-                                keyboardOptions=KeyboardOptions(imeAction=ImeAction.Go),
-                                keyboardActions=KeyboardActions(onGo={submitHomeSearch()}),
-                                decorationBox={innerTextField ->
-                                    Box(contentAlignment=Alignment.CenterStart) {
-                                        if(homeSearch.isBlank()) Text(
-                                            "Pesquisa",
-                                            style=MaterialTheme.typography.bodyLarge,
-                                            color=MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                        innerTextField()
-                                    }
-                                },
-                            )
-                            IconButton(
-                                onClick={submitHomeSearch()},
-                                modifier=Modifier.size(48.dp),
-                            ) {
-                                Image(
-                                    painter=painterResource(com.reivex.browser.R.drawable.ic_reivex_launcher_foreground),
-                                    contentDescription="Pesquisar com ReiVex",
-                                    modifier=Modifier.size(34.dp),
-                                )
-                            }
+                } else if(tab.home) BrowserStartPage(
+                    search = homeSearch,
+                    onSearchChange = { homeSearch = it },
+                    onSearch = { submitHomeSearch() },
+                    recents = recents,
+                    favorites = favorites,
+                    onOpen = { url ->
+                        val destination = BrowserAddress.resolve(url)
+                        if (destination != null) {
+                            error = ""
+                            homeSearch = ""
+                            address = destination
+                            tab.home = false
+                            browser.onResume()
+                            browser.loadUrl(destination)
                         }
-                    }
-                } else AndroidView(factory={browser},modifier=Modifier.weight(1f).fillMaxWidth())
+                    },
+                    onToggleFavorite = { link ->
+                        startPageStore.toggleFavorite(link)
+                        favorites = startPageStore.favorites()
+                    },
+                    onRemoveRecent = { url ->
+                        startPageStore.removeRecent(url)
+                        recents = startPageStore.recents()
+                    },
+                    onClearRecents = {
+                        startPageStore.clearRecents()
+                        recents = emptyList()
+                    },
+                    modifier = Modifier.weight(1f),
+                ) else AndroidView(factory={browser},modifier=Modifier.weight(1f).fillMaxWidth())
                 if(!keyboardVisible) {
                     Row(
                         Modifier.fillMaxWidth(),
