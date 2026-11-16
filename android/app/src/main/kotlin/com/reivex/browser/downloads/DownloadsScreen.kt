@@ -37,6 +37,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.reivex.browser.R
 import com.reivex.browser.ui.theme.ReiVexComposeTheme
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
