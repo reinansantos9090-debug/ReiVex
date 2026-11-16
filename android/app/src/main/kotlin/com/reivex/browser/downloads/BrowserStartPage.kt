@@ -1,6 +1,10 @@
 package com.reivex.browser.downloads
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import java.io.File
+import java.security.MessageDigest
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -13,6 +17,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.History
@@ -42,6 +48,34 @@ internal data class BrowserStartLink(val url: String, val title: String)
 
 internal class BrowserStartPageStore(context: Context) {
     private val prefs = context.getSharedPreferences("reivex.start_page", Context.MODE_PRIVATE)
+
+    private val iconDirectory = File(context.filesDir, "browser-favicons")
+
+    private fun iconFile(url: String): File? = runCatching {
+        val host = Uri.parse(url).host?.lowercase()?.takeIf { it.isNotBlank() }
+            ?: return@runCatching null
+        val hash = MessageDigest.getInstance("SHA-256")
+            .digest(host.toByteArray(Charsets.UTF_8))
+            .joinToString("") { byte -> "%02x".format(byte) }
+        File(iconDirectory, hash + ".png")
+    }.getOrNull()
+
+    /** WebView's own favicon, cached locally; no third-party favicon service. */
+    fun saveFavicon(url: String, bitmap: Bitmap) {
+        if (!isWebUrl(url) || bitmap.width <= 0 || bitmap.height <= 0) return
+        val file = iconFile(url) ?: return
+        runCatching {
+            iconDirectory.mkdirs()
+            val small = Bitmap.createScaledBitmap(bitmap, 72, 72, true)
+            file.outputStream().use { small.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            if (small !== bitmap) small.recycle()
+        }
+    }
+
+    fun favicon(url: String): Bitmap? {
+        val file = iconFile(url) ?: return null
+        return runCatching { BitmapFactory.decodeFile(file.absolutePath) }.getOrNull()
+    }
 
     fun recents(): List<BrowserStartLink> = read("recents")
     fun favorites(): List<BrowserStartLink> = read("favorites")
@@ -280,6 +314,8 @@ private fun BrowserStartPageRow(
     onRemoveRecent: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val favicon = remember(link.url) { BrowserStartPageStore(context).favicon(link.url) }
     Surface(
         onClick = onOpen,
         modifier = Modifier.fillMaxWidth().height(72.dp),
@@ -297,11 +333,19 @@ private fun BrowserStartPageRow(
                     .background(Color(0xFF222326)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    link.title.firstOrNull()?.uppercase() ?: "?",
-                    fontSize = 21.sp, fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                )
+                if (favicon != null) {
+                    Image(
+                        bitmap = favicon.asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier.size(34.dp),
+                    )
+                } else {
+                    Text(
+                        link.title.firstOrNull()?.uppercase() ?: "?",
+                        fontSize = 21.sp, fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                    )
+                }
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
