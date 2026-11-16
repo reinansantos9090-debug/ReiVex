@@ -164,22 +164,24 @@ internal fun BrowserStartPage(
             .padding(horizontal = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.height(62.dp))
+        // Scale the center brand to the reference while keeping the search bar
+        // and the other start-page sections in their original positions.
+        Spacer(Modifier.height(42.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            BrandMark(Modifier.size(52.dp))
+            BrandMark(Modifier.size(92.dp))
             Spacer(Modifier.width(11.dp))
-            Box(Modifier.width(1.dp).height(44.dp).background(Color(0xFF777A80)))
+            Box(Modifier.width(1.dp).height(64.dp).background(Color(0xFF777A80)))
             Spacer(Modifier.width(12.dp))
             Text(
                 "ReiVex",
-                fontSize = 34.sp,
+                fontSize = 56.sp,
                 fontWeight = FontWeight.Bold,
                 fontStyle = FontStyle.Italic,
                 color = Color.White,
                 letterSpacing = (-0.6).sp,
             )
         }
-        Spacer(Modifier.height(74.dp))
+        Spacer(Modifier.height(54.dp))
         Surface(
             modifier = Modifier.fillMaxWidth().height(66.dp),
             shape = CircleShape,
