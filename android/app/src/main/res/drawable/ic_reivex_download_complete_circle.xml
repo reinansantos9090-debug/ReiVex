@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Completed download in the list: light, circular check as in the user's
+     reference. Kept separate from the notification's rectangular status icon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="28"
+    android:viewportHeight="28">
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#E7E5FF"
+        android:strokeWidth="2.1"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M14,2.7 A11.3,11.3 0,1 1,14 25.3 A11.3,11.3 0,1 1,14 2.7 Z"/>
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#E7E5FF"
+        android:strokeWidth="2.65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M7.75,14.1 L12.05,18.15 L20.4,9.9"/>
+</vector>

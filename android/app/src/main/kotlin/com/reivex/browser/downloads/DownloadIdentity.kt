@@ -131,6 +131,12 @@ object DownloadIdentity {
         val title=pageTitle.substringBefore(" | ").substringBefore(" – ")
             .map { if(it.isISOControl() || it in "\\/:*?\"<>|") ' ' else it }.joinToString("").trim().take(180).trim()
         val guessed=android.webkit.URLUtil.guessFileName(url,null,mime)
+        // Never turn a direct APK/PDF/ZIP into video just because its
+        // hosting page has a descriptive title.
+        val actual=DownloadResourceIdentity.bestName(null,url,mime)
+        if(DownloadFileKind.isOrdinaryFileName(actual) ||
+            DownloadFileKind.isOrdinaryMime(mime))
+            return actual ?: guessed
         if(title.length<3)return guessed
         val extension=guessed.substringAfterLast('.', "mp4").lowercase()
             .takeIf {it in setOf("mp4","mkv","webm","mov","m4v","ts")} ?: "mp4"
@@ -142,6 +148,11 @@ object DownloadIdentity {
         sharedTitle: String, url: String, providedName: String, refererUrl: String = "",
     ): String {
         if (providedName.isNotBlank() && !isGenericMediaName(providedName)) return providedName
+        // The actual file's .apk/.pdf/.zip suffix takes priority over
+        // the GitHub/site title. The former is a real resource identity;
+        // the latter only describes the page.
+        val actual=DownloadResourceIdentity.bestName(null,url,null)
+        if(DownloadFileKind.isOrdinaryFileName(actual)) return actual!!
         val fromContext=DownloadResourceIdentity.contextualEpisodeName(url)
         val episode=episodeTitleFromPage(sharedTitle,url).takeIf {
             episodeMarker.containsMatchIn(it) && usefulPageTitle(it)
@@ -163,7 +174,11 @@ object DownloadIdentity {
             }
         }
         val plainTitle=sharedTitle.trim().takeIf { usefulPageTitle(it) }
-        if(plainTitle!=null) {
+        val mediaHint=DownloadFileKind.extension(providedName) in
+            (DownloadContainerDetector.knownExtensions+setOf("m3u8","mpd")) ||
+            DownloadFileKind.extension(actual.orEmpty()) in
+                (DownloadContainerDetector.knownExtensions+setOf("m3u8","mpd"))
+        if(plainTitle!=null && mediaHint) {
             val clean=plainTitle.map {
                 if(it.isISOControl() || it in "\\/:*?\"<>|") ' ' else it
             }.joinToString("").trim().take(180)
@@ -171,7 +186,8 @@ object DownloadIdentity {
         }
         DownloadResourceIdentity.bestName(null,url,null)?.takeUnless(::isGenericMediaName)
             ?.let { return it }
-        return providedName.takeIf {it.isNotBlank() && !isGenericMediaName(it)} ?: "Episódio.mp4"
+        return providedName.takeIf {it.isNotBlank() && !isGenericMediaName(it)}
+            ?: if(mediaHint) "Episódio.mp4" else "download.bin"
     }
 
     fun title(value: String): String {
