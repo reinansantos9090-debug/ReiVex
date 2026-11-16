@@ -375,6 +375,14 @@ class DownloadBrowserActivity: ComponentActivity() {
 
                 }
                 webChromeClient=object: WebChromeClient() {
+                    override fun onReceivedIcon(view: WebView, icon: Bitmap?) {
+                        if (!tab.home && icon != null) {
+                            val pageUrl = view.url.orEmpty()
+                            scope.launch(Dispatchers.IO) {
+                                startPageStore.saveFavicon(pageUrl, icon)
+                            }
+                        }
+                    }
                     override fun onShowCustomView(view:android.view.View,callback:CustomViewCallback) {fullscreen.show(view,callback)}
                     override fun onHideCustomView() {fullscreen.hide()}
                     override fun onProgressChanged(view: WebView,n: Int) { progress=n }
