@@ -713,7 +713,9 @@ class DownloadBrowserActivity: ComponentActivity() {
                         recents = emptyList()
                     },
                     modifier = Modifier.weight(1f),
-                ) else AndroidView(factory={browser},modifier=Modifier.weight(1f).fillMaxWidth())
+                ) else key(rendererGeneration) {
+                    AndroidView(factory={browser},modifier=Modifier.weight(1f).fillMaxWidth())
+                }
                 if(!keyboardVisible) {
                     Row(
                         Modifier.fillMaxWidth(),
