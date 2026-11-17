@@ -228,7 +228,23 @@ class DownloadEngine(private val context: Context) {
                 } catch(cancelled: CancellationException) { throw cancelled }
                 catch(rejected: DownloadCaptureGuard.Rejected) {throw rejected}
                 catch(_: DownloadRanges.Paused) { return }
-                catch(error: Exception) { if(store.get(id)?.state=="DOWNLOADING") { restart(id,target);store.mutate(id){it.put("parallelDisabled",true)};throw IOException("Retomando com uma conexão",error) } }
+                catch(error: Exception) {
+                    // Each parallel wave is written in-order, fsynced and only
+                    // then committed to DownloadStore. Never throw away that
+                    // verified prefix merely because a later range failed.
+                    // The normal transfer entry truncates to the persisted
+                    // offset and resumes with If-Range on the next attempt.
+                    if(store.get(id)?.state=="DOWNLOADING") {
+                        val committed=store.get(id)!!
+                        if(!DownloadParallelRecovery.keepCommittedBytes(
+                                committed.bytes,target.size(),
+                                committed.json.optString("validator"),newValidator)) {
+                            restart(id,target)
+                        }
+                        store.mutate(id){it.put("parallelDisabled",true)}
+                        throw IOException("Retomando com uma conexão sem descartar os bytes válidos",error)
+                    }
+                }
                 return
             }
             val bufferSize=(prefs.getPreference("downloads.buffer_kb","256")?.toIntOrNull() ?: 256).coerceIn(64,512)*1024
