@@ -130,6 +130,7 @@ jobs:
           --tests com.reivex.browser.downloads.DownloadRangesPlanTest
           --tests com.reivex.browser.downloads.BrowserMediaOptionTest
           --tests com.reivex.browser.downloads.DownloadHttpNaviBehaviorTest
+          --tests com.reivex.browser.downloads.DownloadNotificationIconTest
 
       - name: Build ReiVex release APK
         if: steps.signing_mode.outputs.mode != 'debug_preview'

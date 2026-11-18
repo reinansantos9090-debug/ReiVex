@@ -56,6 +56,18 @@ object DownloadScheduling {
         else -> R.drawable.ic_reivex_download_active
     }
 
+    /** Include every dynamic field rendered by itemNotification in deduplication. */
+    internal fun notificationMarker(item: DownloadItem): String = listOf(
+        item.state,
+        item.name,
+        item.bytes,
+        item.total,
+        item.json.optLong("detectedSize"),
+        item.json.optBoolean("detectedSizeExact"),
+        item.json.optLong("hlsEstimatedTotal"),
+        item.json.optLong("speed"),
+    ).joinToString("\u0000")
+
     @Volatile private var cachedOfficialIcon: Bitmap? = null
 
     // Decode the current launcher artwork once, at notification scale.
@@ -149,9 +161,7 @@ object DownloadScheduling {
     fun publish(context: Context) {
         val rows=DownloadSnapshots.items.value
         rows.forEach { item ->
-            val marker=item.state+":"+item.bytes+":"+item.total+":"+item.json.optLong("detectedSize")+
-                ":"+item.json.optBoolean("detectedSizeExact")+":"+item.json.optLong("hlsEstimatedTotal")+
-                ":"+item.json.optLong("speed")
+            val marker=notificationMarker(item)
             if(posted[item.id]==marker)return@forEach
             val manager=context.getSystemService(NotificationManager::class.java)
             if(item.state in setOf("CANCELLED","CORRUPT")) {
