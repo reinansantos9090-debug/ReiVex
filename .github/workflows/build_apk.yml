@@ -118,7 +118,7 @@ jobs:
         if: github.event_name == 'pull_request'
         run: echo "REIVEX_ALLOW_DEBUG_RELEASE_FOR_PR=true" >> "$GITHUB_ENV"
 
-      - name: Test non-video downloads and existing anime/video filenames
+      - name: Test downloads, parallel recovery and browser media options
         if: github.event_name == 'pull_request'
         run: >-
           gradle -p android --no-daemon :app:testDebugUnitTest
@@ -126,6 +126,9 @@ jobs:
           --tests com.reivex.browser.downloads.DownloadIdentitySharedNameTest
           --tests com.reivex.browser.downloads.DownloadResourceIdentityTest
           --tests com.reivex.browser.downloads.DownloadContainerDetectorTest
+          --tests com.reivex.browser.downloads.DownloadParallelRecoveryTest
+          --tests com.reivex.browser.downloads.BrowserMediaOptionTest
+          --tests com.reivex.browser.downloads.DownloadHttpNaviBehaviorTest
 
       - name: Build ReiVex release APK
         if: steps.signing_mode.outputs.mode != 'debug_preview'
