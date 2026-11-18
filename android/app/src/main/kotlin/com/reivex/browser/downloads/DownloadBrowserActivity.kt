@@ -15,6 +15,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import android.webkit.*
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -22,6 +24,7 @@ import androidx.activity.compose.setContent
 import androidx.webkit.ServiceWorkerClientCompat
 import androidx.webkit.ServiceWorkerControllerCompat
 import androidx.webkit.WebViewFeature
+import androidx.webkit.WebStorageCompat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -171,6 +174,10 @@ class DownloadBrowserActivity: ComponentActivity() {
         val inspectedHls=remember {mutableSetOf<String>()}
         val hlsJobs=remember {mutableListOf<Job>()}
         val popupViews=remember {mutableListOf<WebView>()}
+        // Android may terminate an unhealthy Chromium renderer. Recreate only
+        // the affected live tab rather than crashing the entire browser.
+        var rendererGeneration by remember(tab.id) {mutableIntStateOf(0)}
+        val lostRenderers=remember(tab.id) {mutableSetOf<WebView>()}
         val fullscreen=remember {BrowserFullscreen(this@DownloadBrowserActivity)}
         var discoveryRequested by remember {mutableStateOf(false)}
         var discoveryGeneration by remember {mutableIntStateOf(0)}
@@ -210,9 +217,10 @@ class DownloadBrowserActivity: ComponentActivity() {
             val visible=sourceOptions.values.filter {
                 now-it.receivedAt in 0..60000 && BrowserMediaOption.eligible(it)
             }
-            candidates=BrowserMediaResults.combine(main,visible).filter {
-                Regex("""\b\d{2,4}p\b""").containsMatchIn(it.quality)
-            }
+            // CDN links sometimes have no declared 360p/720p/1080p label.
+            // Keep legitimate discovered files selectable as "Qualidade não informada"
+            // instead of silently showing an empty download sheet.
+            candidates=BrowserMediaResults.combine(main,visible)
         }
         fun discoverHls() {
             if(!discoveryRequested)return
@@ -248,7 +256,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                 }
             }
         }
-        val browser=remember {
+        val browser=remember(rendererGeneration) {
             WebView(this).apply {
                 web=this
                 try { BrowserAdBlock.install(applicationContext,this,scope) }
@@ -372,7 +380,26 @@ class DownloadBrowserActivity: ComponentActivity() {
                     override fun onReceivedError(view:WebView,request:WebResourceRequest,failure:WebResourceError) {
                         if(request.isForMainFrame) {progress=100;error="Não foi possível carregar a página: "+failure.description}
                     }
-
+                    override fun onRenderProcessGone(
+                        view:WebView,detail:android.webkit.RenderProcessGoneDetail,
+                    ):Boolean {
+                        // Android delivers this callback off the UI thread.
+                        // Compose state, tab state and this tab's renderer set
+                        // are UI-owned, so marshal cleanup before triggering
+                        // disposal/recreation of the dead WebView.
+                        runOnUiThread {
+                            if(!isFinishing && !isDestroyed) {
+                                lostRenderers.add(view)
+                                tab.saved=Bundle() // State from a dead renderer is unsafe to restore.
+                                tab.preview=null
+                                mediaRequests.clear()
+                                error="A página foi interrompida. Recuperando a guia."
+                                progress=0
+                                rendererGeneration++
+                            }
+                        }
+                        return true
+                    }
                 }
                 webChromeClient=object: WebChromeClient() {
                     override fun onReceivedIcon(view: WebView, icon: Bitmap?) {
@@ -392,7 +419,10 @@ class DownloadBrowserActivity: ComponentActivity() {
                         val popup=WebView(this@DownloadBrowserActivity)
                         popupViews.add(popup)
                         fun closePopup() {
-                            if(popupViews.remove(popup)) {popup.stopLoading();popup.destroy()}
+                            if(popupViews.remove(popup)) {
+                                runCatching {popup.stopLoading()}
+                                runCatching {popup.destroy()}
+                            }
                         }
                         view.postDelayed({closePopup()},5000)
                         popup.webChromeClient=object:WebChromeClient() {
@@ -402,6 +432,14 @@ class DownloadBrowserActivity: ComponentActivity() {
                         popup.settings.domStorageEnabled=true
                         popup.settings.allowFileAccess=false;popup.settings.allowContentAccess=false
                         popup.webViewClient=object: WebViewClient() {
+                            override fun onRenderProcessGone(
+                                v:WebView,detail:android.webkit.RenderProcessGoneDetail,
+                            ):Boolean {
+                                // Popup cleanup mutates UI-owned state and
+                                // destroys a WebView; both require the UI thread.
+                                runOnUiThread { closePopup() }
+                                return true
+                            }
                             override fun shouldInterceptRequest(v:WebView,r:WebResourceRequest):WebResourceResponse? =
                                 if(BrowserAdBlock.blocked(r,tab.url))
                                     WebResourceResponse("text/plain","UTF-8",java.io.ByteArrayInputStream(byteArrayOf())) else null
@@ -448,7 +486,7 @@ class DownloadBrowserActivity: ComponentActivity() {
                 browser.loadUrl(destination)
             }
         }
-        LaunchedEffect(tab.id) {
+        LaunchedEffect(tab.id,rendererGeneration) {
             // Preferences and filter preparation are independent: neither failure may
             // prevent a tab from loading. The WebView always stays usable.
             try {
@@ -501,12 +539,23 @@ class DownloadBrowserActivity: ComponentActivity() {
         }
         DisposableEffect(browser) {onDispose {
             fullscreen.hide()
-            tab.saved=Bundle();browser.saveState(tab.saved)
-            tab.scrollX=browser.scrollX;tab.scrollY=browser.scrollY
-            popupViews.toList().forEach {it.stopLoading();it.destroy()};popupViews.clear()
-            browser.onPause();browser.stopLoading()
+            val crashed=lostRenderers.remove(browser)
+            if(!crashed) {
+                tab.saved=Bundle()
+                runCatching {browser.saveState(tab.saved)}
+                tab.scrollX=browser.scrollX;tab.scrollY=browser.scrollY
+            }
+            popupViews.toList().forEach {
+                runCatching {it.stopLoading()}
+                runCatching {it.destroy()}
+            };popupViews.clear()
+            if(!crashed) {
+                runCatching {browser.onPause()}
+                runCatching {browser.stopLoading()}
+            }
             (browser.parent as? android.view.ViewGroup)?.removeView(browser)
-            browser.destroy();web=null
+            runCatching {browser.destroy()}
+            if(web===browser)web=null
             mediaRequests.clear();pendingOffer=null
         }}
         fun captureTab() {
@@ -529,7 +578,45 @@ class DownloadBrowserActivity: ComponentActivity() {
             }
         }
         if(showSettings) {
-            DownloadSettingsScreen {showSettings=false}
+            DownloadSettingsScreen(onBack={showSettings=false},onClearBrowsingData={
+                withContext(Dispatchers.Main.immediate) {
+                    browser.clearHistory()
+                    browser.clearCache(true)
+                    browser.clearFormData()
+                    browser.clearSslPreferences()
+                    WebViewDatabase.getInstance(applicationContext).apply {
+                        clearFormData()
+                        clearHttpAuthUsernamePassword()
+                        clearUsernamePassword()
+                    }
+                    startPageStore.clearRecents()
+                    startPageStore.clearFavicons()
+                    recents=emptyList()
+                    tabs.forEach { openTab ->
+                        openTab.saved=Bundle()
+                        openTab.scrollX=0
+                        openTab.scrollY=0
+                        openTab.preview?.let { preview -> runCatching {preview.recycle()} }
+                        openTab.preview=null
+                    }
+                    val siteStorage=WebStorage.getInstance()
+                    suspendCancellableCoroutine { continuation ->
+                        if(WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)) {
+                            WebStorageCompat.deleteBrowsingData(siteStorage,Runnable {
+                                CookieManager.getInstance().flush()
+                                if(continuation.isActive)continuation.resume(Unit)
+                            })
+                        } else {
+                            siteStorage.deleteAllData()
+                            CookieManager.getInstance().removeAllCookies {
+                                CookieManager.getInstance().flush()
+                                if(continuation.isActive)continuation.resume(Unit)
+                            }
+                        }
+                    }
+                    browser.reload()
+                }
+            })
             return
         }
         Surface(Modifier.fillMaxSize()) {
@@ -680,7 +767,9 @@ class DownloadBrowserActivity: ComponentActivity() {
                         recents = emptyList()
                     },
                     modifier = Modifier.weight(1f),
-                ) else AndroidView(factory={browser},modifier=Modifier.weight(1f).fillMaxWidth())
+                ) else key(rendererGeneration) {
+                    AndroidView(factory={browser},modifier=Modifier.weight(1f).fillMaxWidth())
+                }
                 if(!keyboardVisible) {
                     Row(
                         Modifier.fillMaxWidth(),

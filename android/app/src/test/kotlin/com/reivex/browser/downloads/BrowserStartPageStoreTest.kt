@@ -1,6 +1,7 @@
 package com.reivex.browser.downloads
 
 import android.content.Context
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -9,8 +10,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
 class BrowserStartPageStoreTest {
     private lateinit var store: BrowserStartPageStore
 
@@ -49,5 +52,22 @@ class BrowserStartPageStoreTest {
         store.recordVisit("https://example.com", "Exemplo")
         store.clearRecents()
         assertFalse(store.recents().isNotEmpty())
+    }
+
+    @Test fun clearingBrowsingHistoryPreservesFavorites() {
+        val iconDirectory=File(RuntimeEnvironment.getApplication().filesDir,"browser-favicons")
+        iconDirectory.mkdirs()
+        File(iconDirectory,"test.png").writeBytes(byteArrayOf(1,2,3))
+        val favorite=BrowserStartLink("https://example.com/favorite","Favorito")
+        store.toggleFavorite(favorite)
+        store.recordVisit("https://example.com/recent","Visita")
+        assertTrue(iconDirectory.exists())
+
+        store.clearRecents()
+        store.clearFavicons()
+
+        assertTrue(store.recents().isEmpty())
+        assertEquals(listOf(favorite),store.favorites())
+        assertFalse(iconDirectory.exists())
     }
 }

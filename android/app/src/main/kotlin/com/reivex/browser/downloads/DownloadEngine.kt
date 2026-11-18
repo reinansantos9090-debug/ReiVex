@@ -139,8 +139,9 @@ class DownloadEngine(private val context: Context) {
             val range=DownloadHttp.range(connection.getHeaderField("Content-Range"))
             if(code==206 && (range==null || range.start!=resume)) throw PermanentFailure("O servidor retornou uma faixa de bytes inválida")
             if(resume>0 && code==200) { restart(id,target); resume=0 }
-            val newValidator=connection.getHeaderField("ETag")?.takeUnless { it.startsWith("W/") }
-                ?: connection.getHeaderField("Last-Modified")
+            val newValidator=DownloadParallelRecovery.resumeValidator(
+                connection.getHeaderField("ETag"),connection.getHeaderField("Last-Modified"),
+            )
             if(resume>0 && validator!=null && newValidator!=null && validator!=newValidator) {
                 restart(id,target); throw IOException("O arquivo no servidor mudou; reiniciando com segurança")
             }
@@ -221,14 +222,30 @@ class DownloadEngine(private val context: Context) {
             val prefs=ReiVexPreferences(context)
             val connections=(prefs.getPreference("downloads.connections","4").toIntOrNull() ?: 4).coerceIn(1,16)
             if(connections>1 && total>=4*1024*1024 && !store.get(id)!!.json.optBoolean("parallelDisabled") &&
-                newValidator?.startsWith("\"")==true && connection.getHeaderField("Accept-Ranges").equals("bytes",true)) {
+                DownloadParallelRecovery.isStrongETag(newValidator) && connection.getHeaderField("Accept-Ranges").equals("bytes",true)) {
                 connection.disconnect(); connection=null
                 try {
-                    if(DownloadRanges.receive(context,store,id,secret.getString("url"),requestHeaders,target,resume,total,newValidator,connections)) verifyAndSave(id,target)
+                    if(DownloadRanges.receive(context,store,id,secret.getString("url"),requestHeaders,target,resume,total,requireNotNull(newValidator),connections)) verifyAndSave(id,target)
                 } catch(cancelled: CancellationException) { throw cancelled }
                 catch(rejected: DownloadCaptureGuard.Rejected) {throw rejected}
                 catch(_: DownloadRanges.Paused) { return }
-                catch(error: Exception) { if(store.get(id)?.state=="DOWNLOADING") { restart(id,target);store.mutate(id){it.put("parallelDisabled",true)};throw IOException("Retomando com uma conexão",error) } }
+                catch(error: Exception) {
+                    // Each parallel wave is written in-order, fsynced and only
+                    // then committed to DownloadStore. Never throw away that
+                    // verified prefix merely because a later range failed.
+                    // The normal transfer entry truncates to the persisted
+                    // offset and resumes with If-Range on the next attempt.
+                    if(store.get(id)?.state=="DOWNLOADING") {
+                        val committed=store.get(id)!!
+                        if(!DownloadParallelRecovery.keepCommittedBytes(
+                                committed.bytes,target.size(),
+                                committed.json.optString("validator"),newValidator)) {
+                            restart(id,target)
+                        }
+                        store.mutate(id){it.put("parallelDisabled",true)}
+                        throw IOException("Retomando com uma conexão sem descartar os bytes válidos",error)
+                    }
+                }
                 return
             }
             val bufferSize=(prefs.getPreference("downloads.buffer_kb","256")?.toIntOrNull() ?: 256).coerceIn(64,512)*1024
