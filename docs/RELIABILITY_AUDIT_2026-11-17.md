@@ -29,7 +29,7 @@ Esta revisão está restrita ao repositório **ReiVex**. Nenhum código do ReiAn
 - `BrowserStartPageStoreTest`: a limpeza remove visitas/favicons sem apagar favoritos.
 - `BrowserMediaOptionTest`: opção de vídeo direto sem rótulo de qualidade, ao lado dos testes existentes de deduplicação, prioridade, filtros e HLS.
 - A CI da PR também invoca `DownloadHttpNaviBehaviorTest`, para resguardar as respostas HTTP, cookies e cabeçalhos entre redirecionamentos.
-- A primeira execução CI após validação estrita de ETag apontou um erro de nullabilidade Kotlin no ramo paralelo. O argumento agora é explicitamente verificado antes da chamada que requer ETag forte; essa correção e as alterações da limpeza precisam passar pela próxima execução CI.
+- A CI encontrou e levou à correção de dois problemas introduzidos nesta evolução: nullabilidade do validador no ramo paralelo e SDK Robolectric ausente no novo teste do armazenamento local. Ambos foram ajustados; a execução CI atual ainda precisa confirmar o resultado.
 - O teste manual em dispositivo Android continua pendente; nenhum resultado dependente de aparelho ou servidor real é declarado como aprovado.
 
 ## Como verificar manualmente
