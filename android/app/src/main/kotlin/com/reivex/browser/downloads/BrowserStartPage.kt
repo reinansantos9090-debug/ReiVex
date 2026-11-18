@@ -102,6 +102,9 @@ internal class BrowserStartPageStore(context: Context) {
 
     fun removeRecent(url: String) = write("recents", recents().filterNot { it.url == url })
     fun clearRecents() = prefs.edit().remove("recents").apply()
+    fun clearFavicons() {
+        iconDirectory.listFiles()?.forEach { file -> runCatching { file.delete() } }
+    }
 
     private fun isWebUrl(url: String): Boolean = runCatching {
         val uri = Uri.parse(url)

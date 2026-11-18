@@ -16,7 +16,7 @@ import kotlinx.coroutines.*
 import org.json.JSONObject
 
 @Composable
-fun DownloadSettingsScreen(onBack: ()->Unit) {
+fun DownloadSettingsScreen(onBack: ()->Unit,onClearBrowsingData: suspend ()->Unit) {
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
     val store=remember { DownloadStore(context) }
@@ -36,6 +36,7 @@ fun DownloadSettingsScreen(onBack: ()->Unit) {
     var referer by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(true) }
+    var confirmClearBrowsingData by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         try { withContext(Dispatchers.IO) {
             store.ready(); adMode=prefs.getPreference("browser.ad_mode","balanced") ?: "balanced"; parallel=prefs.getPreference("downloads.parallel","2")?.toIntOrNull() ?: 2
@@ -86,6 +87,21 @@ fun DownloadSettingsScreen(onBack: ()->Unit) {
         androidx.activity.compose.BackHandler {adPicker=false}
         return
     }
+    if(confirmClearBrowsingData) {
+        AlertDialog(
+            onDismissRequest={if(!busy)confirmClearBrowsingData=false},
+            title={Text("Limpar dados de navegação?")},
+            text={Text("Isso apaga cookies, cache, dados de sites, histórico e visitas recentes. Você poderá sair das contas dos sites. Favoritos e downloads serão mantidos.")},
+            confirmButton={TextButton(enabled=!busy,onClick={scope.launch {
+                busy=true
+                try {onClearBrowsingData();message="Dados de navegação apagados. Favoritos e downloads foram mantidos."}
+                catch(c:CancellationException){throw c}
+                catch(_:Exception){message="Não foi possível apagar todos os dados de navegação"}
+                finally {busy=false;confirmClearBrowsingData=false}
+            }}) {Text(if(busy)"Apagando…" else "Limpar dados")}},
+            dismissButton={TextButton(enabled=!busy,onClick={confirmClearBrowsingData=false}) {Text("Cancelar")}},
+        )
+    }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
             IconButton(onClick=onBack) { Icon(Icons.Filled.ArrowBack,"Voltar") }
@@ -93,6 +109,13 @@ fun DownloadSettingsScreen(onBack: ()->Unit) {
         }
         Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             DownloadSection("Navegador")
+            TextButton(enabled=!busy,onClick={confirmClearBrowsingData=true}) {
+                Icon(Icons.Filled.DeleteSweep,null,Modifier.padding(end=16.dp).size(22.dp))
+                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)) {
+                    Text("Limpar dados de navegação")
+                    Text("Cookies, cache, histórico e visitas recentes",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             TextButton(enabled=!busy,onClick={adPicker=true}) {
                 Icon(Icons.Filled.Shield,null,Modifier.padding(end=16.dp).size(22.dp))
                 Text("Bloquear anúncios",Modifier.weight(1f))

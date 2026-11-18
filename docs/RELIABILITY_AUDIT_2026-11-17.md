@@ -9,10 +9,12 @@ Esta revisão está restrita ao repositório **ReiVex**. Nenhum código do ReiAn
 3. **Processo WebView encerrado pelo Android**. A atividade não implementava `WebViewClient.onRenderProcessGone`. Adicionada recuperação da guia visível, reconstrução controlada do `AndroidView`/WebView, descarte do estado incompatível e liberação da instância encerrada; janelas popup também recebem tratamento do encerramento. O callback do Android ocorre fora da thread de UI, então as alterações de estado Compose e a destruição de popups são encaminhadas para a thread principal.
 4. **Nome corrigido ausente na notificação ativa**. O cache de deduplicação das notificações não incluía `item.name`; se a resposta HTTP refinasse o nome depois do início, a notificação poderia manter o rótulo antigo enquanto os demais campos permanecessem iguais. O marcador agora inclui o nome e tem teste de regressão.
 5. **Notificação concluída reaparecia depois de dispensada e reiniciado o processo**. O estado de publicação deduplicada era mantido apenas em memória. Agora a ação de dispensa grava a preferência no item do banco local e a publicação posterior respeita esse estado, inclusive após reinício do processo; teste cobre a política de persistência.
+6. **Sem controle único de limpeza de privacidade**. As configurações não ofereciam um modo claro de limpar dados de sites. Foi adicionada uma ação com confirmação que remove cookies, cache, dados WebStorage, histórico/formulários/autenticação HTTP do WebView, visitas recentes e favicons locais; favoritos e downloads são preservados. As sessões abertas são recarregadas após a remoção dos cookies.
 
 ## Segurança e compatibilidade
 - A retomada só reaproveita bytes com validador forte da mesma representação e tamanho persistido coerente. O servidor ainda deve aceitar `If-Range`, `206` e o intervalo solicitado.
 - A coleta de mídia continua limitada à inspeção de recursos de páginas carregadas no navegador. DRM e controles de acesso não são contornados.
+- A limpeza de navegação remove cookies de sites e pode encerrar sessões web. Perfis de autenticação de download, links favoritos e arquivos baixados são mantidos por serem dados separados do armazenamento WebView.
 - As exceções existentes para Cloudflare/Turnstile, reCAPTCHA e hCaptcha foram preservadas.
 - Nenhuma dependência foi adicionada, nem IDs, permissões, assinatura de release ou armazenamento foram alterados.
 
@@ -24,9 +26,11 @@ Esta revisão está restrita ao repositório **ReiVex**. Nenhum código do ReiAn
 ## Testes de regressão
 - `DownloadParallelRecoveryTest`: prefixo confiável, bytes extras não confirmados, progresso inválido, ETags fracos/malformados e fallback para `Last-Modified`.
 - `DownloadNotificationIconTest`: marcador atualizado após correção de nome, política de dispensa persistente e presença de ação de dispensa.
+- `BrowserStartPageStoreTest`: a limpeza remove visitas/favicons sem apagar favoritos.
 - `BrowserMediaOptionTest`: opção de vídeo direto sem rótulo de qualidade, ao lado dos testes existentes de deduplicação, prioridade, filtros e HLS.
 - A CI da PR também invoca `DownloadHttpNaviBehaviorTest`, para resguardar as respostas HTTP, cookies e cabeçalhos entre redirecionamentos.
-- **Validação a executar na PR:** testes JVM, compilação do APK e teste manual em dispositivo Android; nenhum resultado é declarado aprovado antecipadamente.
+- A primeira execução CI após validação estrita de ETag apontou um erro de nullabilidade Kotlin no ramo paralelo. O argumento agora é explicitamente verificado antes da chamada que requer ETag forte; essa correção e as alterações da limpeza precisam passar pela próxima execução CI.
+- O teste manual em dispositivo Android continua pendente; nenhum resultado dependente de aparelho ou servidor real é declarado como aprovado.
 
 ## Como verificar manualmente
 1. Inicie download HTTP grande via servidor que oferece `Accept-Ranges: bytes` e ETag forte; provoque falha em uma faixa secundária depois de 1+ MB concluídos. Confirme que a transição para uma conexão conserva bytes confirmados e chega a 100%, com hash do arquivo correto.

@@ -1,6 +1,7 @@
 package com.reivex.browser.downloads
 
 import android.content.Context
+import android.graphics.Bitmap
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -49,5 +50,20 @@ class BrowserStartPageStoreTest {
         store.recordVisit("https://example.com", "Exemplo")
         store.clearRecents()
         assertFalse(store.recents().isNotEmpty())
+    }
+
+    @Test fun clearingBrowsingHistoryPreservesFavorites() {
+        val favorite=BrowserStartLink("https://example.com/favorite","Favorito")
+        store.toggleFavorite(favorite)
+        store.recordVisit("https://example.com/recent","Visita")
+        store.saveFavicon("https://example.com/recent",Bitmap.createBitmap(8,8,Bitmap.Config.ARGB_8888))
+        assertTrue(store.favicon("https://example.com/recent")!=null)
+
+        store.clearRecents()
+        store.clearFavicons()
+
+        assertTrue(store.recents().isEmpty())
+        assertEquals(listOf(favorite),store.favorites())
+        assertEquals(null,store.favicon("https://example.com/recent"))
     }
 }

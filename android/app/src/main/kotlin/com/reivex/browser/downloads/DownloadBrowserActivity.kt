@@ -15,6 +15,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import android.webkit.*
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -575,7 +577,37 @@ class DownloadBrowserActivity: ComponentActivity() {
             }
         }
         if(showSettings) {
-            DownloadSettingsScreen {showSettings=false}
+            DownloadSettingsScreen(onBack={showSettings=false},onClearBrowsingData={
+                withContext(Dispatchers.Main.immediate) {
+                    browser.clearHistory()
+                    browser.clearCache(true)
+                    browser.clearFormData()
+                    browser.clearSslPreferences()
+                    WebStorage.getInstance().deleteAllData()
+                    WebViewDatabase.getInstance(applicationContext).apply {
+                        clearFormData()
+                        clearHttpAuthUsernamePassword()
+                        clearUsernamePassword()
+                    }
+                    startPageStore.clearRecents()
+                    startPageStore.clearFavicons()
+                    recents=emptyList()
+                    tabs.forEach { openTab ->
+                        openTab.saved=Bundle()
+                        openTab.scrollX=0
+                        openTab.scrollY=0
+                        openTab.preview?.let { preview -> runCatching {preview.recycle()} }
+                        openTab.preview=null
+                    }
+                    suspendCancellableCoroutine { continuation ->
+                        CookieManager.getInstance().removeAllCookies {
+                            CookieManager.getInstance().flush()
+                            if(continuation.isActive)continuation.resume(Unit)
+                        }
+                    }
+                    browser.reload()
+                }
+            })
             return
         }
         Surface(Modifier.fillMaxSize()) {
