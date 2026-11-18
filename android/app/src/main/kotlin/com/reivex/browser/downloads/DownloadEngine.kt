@@ -225,7 +225,7 @@ class DownloadEngine(private val context: Context) {
                 DownloadParallelRecovery.isStrongETag(newValidator) && connection.getHeaderField("Accept-Ranges").equals("bytes",true)) {
                 connection.disconnect(); connection=null
                 try {
-                    if(DownloadRanges.receive(context,store,id,secret.getString("url"),requestHeaders,target,resume,total,newValidator,connections)) verifyAndSave(id,target)
+                    if(DownloadRanges.receive(context,store,id,secret.getString("url"),requestHeaders,target,resume,total,requireNotNull(newValidator),connections)) verifyAndSave(id,target)
                 } catch(cancelled: CancellationException) { throw cancelled }
                 catch(rejected: DownloadCaptureGuard.Rejected) {throw rejected}
                 catch(_: DownloadRanges.Paused) { return }
