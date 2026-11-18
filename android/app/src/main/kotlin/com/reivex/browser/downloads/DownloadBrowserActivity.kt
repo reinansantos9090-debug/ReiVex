@@ -408,7 +408,10 @@ class DownloadBrowserActivity: ComponentActivity() {
                         val popup=WebView(this@DownloadBrowserActivity)
                         popupViews.add(popup)
                         fun closePopup() {
-                            if(popupViews.remove(popup)) {popup.stopLoading();popup.destroy()}
+                            if(popupViews.remove(popup)) {
+                                runCatching {popup.stopLoading()}
+                                runCatching {popup.destroy()}
+                            }
                         }
                         view.postDelayed({closePopup()},5000)
                         popup.webChromeClient=object:WebChromeClient() {
