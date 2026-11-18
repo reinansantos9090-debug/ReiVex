@@ -14,6 +14,11 @@ Esta revisão está restrita ao repositório **ReiVex**. Nenhum código do ReiAn
 - As exceções existentes para Cloudflare/Turnstile, reCAPTCHA e hCaptcha foram preservadas.
 - Nenhuma dependência foi adicionada, nem IDs, permissões, assinatura de release ou armazenamento foram alterados.
 
+## Sinais de uso e decisões de produto
+- A página oficial do 1DM posiciona navegador integrado, captura de mídia e gerenciador de downloads como um fluxo único; um pedido público no projeto AB Download Manager também solicita detecção de mídia HLS/DASH e um indicador claro de links encontrados. Isso apoia manter a captura contextual no navegador e não esconder links válidos sem rótulo de resolução.
+- Relatos públicos no Reddit e no Brave Community descrevem travamentos do navegador e falhas/baixa velocidade em downloads grandes ou em segundo plano. São relatos individuais, não uma pesquisa representativa; usei-os como sinais para priorizar recuperação do renderer e retomada segura em vez de acrescentar recursos pesados.
+- Referências: [1DM no Google Play](https://play.google.com/store/apps/details?id=idm.internet.download.manager), [pedido de captura de mídia no AB Download Manager](https://github.com/amir1376/ab-download-manager/issues/1264), [relato sobre estabilidade do navegador 1DM](https://www.reddit.com/r/androidapps/comments/1ubb7v3/is_1dm_abandoned_if_so_then_are_there_any/), [pedido sobre download externo e confiabilidade no Brave para Android](https://github.com/brave/brave-browser/issues/53840).
+
 ## Testes de regressão
 - `DownloadParallelRecoveryTest`: prefixo confiável, bytes extras não confirmados, progresso inválido e ETags fracos/diferentes.
 - `BrowserMediaOptionTest`: opção de vídeo direto sem rótulo de qualidade, ao lado dos testes existentes de deduplicação, prioridade, filtros e HLS.
