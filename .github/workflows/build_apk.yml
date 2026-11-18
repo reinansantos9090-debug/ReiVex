@@ -127,6 +127,7 @@ jobs:
           --tests com.reivex.browser.downloads.DownloadResourceIdentityTest
           --tests com.reivex.browser.downloads.DownloadContainerDetectorTest
           --tests com.reivex.browser.downloads.DownloadParallelRecoveryTest
+          --tests com.reivex.browser.downloads.DownloadRangesPlanTest
           --tests com.reivex.browser.downloads.BrowserMediaOptionTest
           --tests com.reivex.browser.downloads.DownloadHttpNaviBehaviorTest
 
