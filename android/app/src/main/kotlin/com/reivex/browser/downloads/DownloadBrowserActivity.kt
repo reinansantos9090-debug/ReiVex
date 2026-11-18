@@ -380,13 +380,21 @@ class DownloadBrowserActivity: ComponentActivity() {
                     override fun onRenderProcessGone(
                         view:WebView,detail:android.webkit.RenderProcessGoneDetail,
                     ):Boolean {
-                        lostRenderers.add(view)
-                        tab.saved=Bundle() // State from a dead renderer is unsafe to restore.
-                        tab.preview=null
-                        mediaRequests.clear()
-                        error="A página foi interrompida. Recuperando a guia."
-                        progress=0
-                        rendererGeneration++
+                        // Android delivers this callback off the UI thread.
+                        // Compose state, tab state and this tab's renderer set
+                        // are UI-owned, so marshal cleanup before triggering
+                        // disposal/recreation of the dead WebView.
+                        runOnUiThread {
+                            if(!isFinishing && !isDestroyed) {
+                                lostRenderers.add(view)
+                                tab.saved=Bundle() // State from a dead renderer is unsafe to restore.
+                                tab.preview=null
+                                mediaRequests.clear()
+                                error="A página foi interrompida. Recuperando a guia."
+                                progress=0
+                                rendererGeneration++
+                            }
+                        }
                         return true
                     }
                 }
@@ -424,7 +432,9 @@ class DownloadBrowserActivity: ComponentActivity() {
                             override fun onRenderProcessGone(
                                 v:WebView,detail:android.webkit.RenderProcessGoneDetail,
                             ):Boolean {
-                                closePopup()
+                                // Popup cleanup mutates UI-owned state and
+                                // destroys a WebView; both require the UI thread.
+                                runOnUiThread { closePopup() }
                                 return true
                             }
                             override fun shouldInterceptRequest(v:WebView,r:WebResourceRequest):WebResourceResponse? =
