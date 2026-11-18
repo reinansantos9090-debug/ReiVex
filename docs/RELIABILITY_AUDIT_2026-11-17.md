@@ -29,7 +29,7 @@ Esta revisão está restrita ao repositório **ReiVex**. Nenhum código do ReiAn
 - `BrowserStartPageStoreTest`: a limpeza remove visitas/favicons sem apagar favoritos.
 - `BrowserMediaOptionTest`: opção de vídeo direto sem rótulo de qualidade, ao lado dos testes existentes de deduplicação, prioridade, filtros e HLS.
 - A CI da PR também invoca `DownloadHttpNaviBehaviorTest`, para resguardar as respostas HTTP, cookies e cabeçalhos entre redirecionamentos.
-- A CI encontrou e levou à correção de dois problemas introduzidos nesta evolução: nullabilidade do validador no ramo paralelo e SDK Robolectric ausente no novo teste do armazenamento local. Ambos foram ajustados; a execução CI atual ainda precisa confirmar o resultado.
+- A CI encontrou três problemas durante a validação incremental: nullabilidade do validador no ramo paralelo, SDK Robolectric ausente e uma falha da limpeza do favicon no novo teste. A remoção agora apaga recursivamente o diretório local; a próxima execução precisa confirmar a regressão.
 - O teste manual em dispositivo Android continua pendente; nenhum resultado dependente de aparelho ou servidor real é declarado como aprovado.
 
 ## Como verificar manualmente

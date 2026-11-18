@@ -66,6 +66,6 @@ class BrowserStartPageStoreTest {
 
         assertTrue(store.recents().isEmpty())
         assertEquals(listOf(favorite),store.favorites())
-        assertEquals(null,store.favicon("https://example.com/recent"))
+        assertTrue(store.favicon("https://example.com/recent")==null)
     }
 }
