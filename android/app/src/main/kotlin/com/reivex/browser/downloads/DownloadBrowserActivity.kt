@@ -24,6 +24,7 @@ import androidx.activity.compose.setContent
 import androidx.webkit.ServiceWorkerClientCompat
 import androidx.webkit.ServiceWorkerControllerCompat
 import androidx.webkit.WebViewFeature
+import androidx.webkit.WebStorageCompat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -583,7 +584,6 @@ class DownloadBrowserActivity: ComponentActivity() {
                     browser.clearCache(true)
                     browser.clearFormData()
                     browser.clearSslPreferences()
-                    WebStorage.getInstance().deleteAllData()
                     WebViewDatabase.getInstance(applicationContext).apply {
                         clearFormData()
                         clearHttpAuthUsernamePassword()
@@ -599,10 +599,19 @@ class DownloadBrowserActivity: ComponentActivity() {
                         openTab.preview?.let { preview -> runCatching {preview.recycle()} }
                         openTab.preview=null
                     }
+                    val siteStorage=WebStorage.getInstance()
                     suspendCancellableCoroutine { continuation ->
-                        CookieManager.getInstance().removeAllCookies {
-                            CookieManager.getInstance().flush()
-                            if(continuation.isActive)continuation.resume(Unit)
+                        if(WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)) {
+                            WebStorageCompat.deleteBrowsingData(siteStorage,Runnable {
+                                CookieManager.getInstance().flush()
+                                if(continuation.isActive)continuation.resume(Unit)
+                            })
+                        } else {
+                            siteStorage.deleteAllData()
+                            CookieManager.getInstance().removeAllCookies {
+                                CookieManager.getInstance().flush()
+                                if(continuation.isActive)continuation.resume(Unit)
+                            }
                         }
                     }
                     browser.reload()
