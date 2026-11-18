@@ -86,7 +86,7 @@ object DownloadScheduling {
         }
     }
 
-    private fun itemNotification(context: Context,item: DownloadItem?,text: String): Notification {
+    internal fun itemNotification(context: Context,item: DownloadItem?,text: String): Notification {
         val manager=context.getSystemService(NotificationManager::class.java)
         if(Build.VERSION.SDK_INT>=26) {
             manager.createNotificationChannel(NotificationChannel("downloads","Downloads",NotificationManager.IMPORTANCE_LOW))
@@ -124,6 +124,17 @@ object DownloadScheduling {
             .setContentText(item.name).setStyle(NotificationCompat.BigTextStyle().bigText(item.name+"\n"+detail))
             .setSubText(if(active && progress!=null) "$progress%" else DownloadState.labels[item.state])
             .setOngoing(active)
+        if(completed) {
+            val dismiss=PendingIntent.getBroadcast(
+                context,
+                item.id.hashCode(),
+                Intent(context,DownloadCompletionDismissReceiver::class.java)
+                    .setData(android.net.Uri.parse("reivex-download://"+item.id+"/completion-dismissed"))
+                    .putExtra("id",item.id),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            builder.setDeleteIntent(dismiss)
+        }
         if(active) {
             builder.setProgress(100,progress ?: 0,progress==null)
         } else {
@@ -162,8 +173,14 @@ object DownloadScheduling {
         val rows=DownloadSnapshots.items.value
         rows.forEach { item ->
             val marker=notificationMarker(item)
-            if(posted[item.id]==marker)return@forEach
             val manager=context.getSystemService(NotificationManager::class.java)
+            if(item.state=="COMPLETE" && DownloadCompletionNotificationPolicy.isDismissed(item)) {
+                manager.cancel(noticeId(item.id))
+                manager.cancel(completedNoticeId(item.id))
+                posted[item.id]=marker
+                return@forEach
+            }
+            if(posted[item.id]==marker)return@forEach
             if(item.state in setOf("CANCELLED","CORRUPT")) {
                 manager.cancel(noticeId(item.id))
                 manager.cancel(completedNoticeId(item.id))
@@ -196,6 +213,16 @@ object DownloadScheduling {
     // Negative IDs cannot collide with transfer notifications or NOTICE=8701.
     private fun completedNoticeId(id: String)=Int.MIN_VALUE or (id.hashCode() and 0x3fffffff)
 
+}
+
+internal object DownloadCompletionNotificationPolicy {
+    private const val DISMISSED_KEY="completionNotificationDismissed"
+
+    fun isDismissed(item:DownloadItem):Boolean = item.json.optBoolean(DISMISSED_KEY)
+
+    fun markDismissed(data:org.json.JSONObject) {
+        if(data.optString("state")=="COMPLETE")data.put(DISMISSED_KEY,true)
+    }
 }
 
 /** API 34+: user-initiated transfers avoid Android 16 long-worker quota for an explicit download. */
@@ -275,6 +302,22 @@ class DownloadPauseReceiver: BroadcastReceiver() {
                 DownloadScheduling.publish(context)
             } catch (_: Exception) { /* No background callback may crash the application. */ }
             finally { pending.finish() }
+        }
+    }
+}
+
+/** Persist that the user explicitly dismissed a completed download notification. */
+class DownloadCompletionDismissReceiver: BroadcastReceiver() {
+    override fun onReceive(context:Context,intent:Intent) {
+        val id=intent.getStringExtra("id")?.takeIf {it.matches(Regex("[a-f0-9-]{36}"))} ?: return
+        val pending=goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                DownloadStore(context).mutate(id,DownloadCompletionNotificationPolicy::markDismissed)
+                DownloadSnapshots.refresh(context)
+            } catch(error:Exception) {
+                android.util.Log.w("ReiVexDownload","Não foi possível salvar a dispensa da notificação",error)
+            } finally {pending.finish()}
         }
     }
 }

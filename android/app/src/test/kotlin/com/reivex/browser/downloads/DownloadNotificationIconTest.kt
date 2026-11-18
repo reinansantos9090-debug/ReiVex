@@ -3,9 +3,13 @@ package com.reivex.browser.downloads
 import com.reivex.browser.R
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
@@ -44,5 +48,32 @@ class DownloadNotificationIconTest {
             DownloadScheduling.notificationMarker(item("original.mp4")),
             DownloadScheduling.notificationMarker(item("resolved-episode.mp4")),
         )
+    }
+
+    @Test fun completionDismissalIsPersistentAndOnlyAppliesToCompletedItems() {
+        val completed=JSONObject().put("state","COMPLETE")
+        assertFalse(DownloadCompletionNotificationPolicy.isDismissed(DownloadItem(completed)))
+        DownloadCompletionNotificationPolicy.markDismissed(completed)
+        assertTrue(DownloadCompletionNotificationPolicy.isDismissed(DownloadItem(completed)))
+
+        val active=JSONObject().put("state","DOWNLOADING")
+        DownloadCompletionNotificationPolicy.markDismissed(active)
+        assertFalse(DownloadCompletionNotificationPolicy.isDismissed(DownloadItem(active)))
+    }
+
+    @Test fun completedNotificationHasAnExplicitDismissAction() {
+        val item=DownloadItem(JSONObject()
+            .put("id","12345678-1234-1234-1234-123456789abc")
+            .put("name","Episode 01.mp4")
+            .put("serverNameResolved",true)
+            .put("state","COMPLETE")
+            .put("bytes",4096)
+            .put("total",4096)
+            .put("virtualUri","content://com.reivex.downloads/test/Episode%2001.mp4"))
+
+        val notification=DownloadScheduling.itemNotification(
+            RuntimeEnvironment.getApplication(),item,"",
+        )
+        assertNotNull(notification.deleteIntent)
     }
 }

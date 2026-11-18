@@ -8,6 +8,7 @@ Esta revisão está restrita ao repositório **ReiVex**. Nenhum código do ReiAn
 2. **Opções de mídia omitidas por falta de rótulo de resolução**. A apresentação das opções filtrava por rótulos como `720p`, embora a própria descoberta já validasse links de vídeos que só anunciam `video/mp4` ou não expõem resolução. Agora todas as opções reconhecidas pelo conjunto já existente de critérios de elegibilidade são apresentadas, inclusive `Qualidade não informada`; nenhuma opção desconhecida é inventada.
 3. **Processo WebView encerrado pelo Android**. A atividade não implementava `WebViewClient.onRenderProcessGone`. Adicionada recuperação da guia visível, reconstrução controlada do `AndroidView`/WebView, descarte do estado incompatível e liberação da instância encerrada; janelas popup também recebem tratamento do encerramento. O callback do Android ocorre fora da thread de UI, então as alterações de estado Compose e a destruição de popups são encaminhadas para a thread principal.
 4. **Nome corrigido ausente na notificação ativa**. O cache de deduplicação das notificações não incluía `item.name`; se a resposta HTTP refinasse o nome depois do início, a notificação poderia manter o rótulo antigo enquanto os demais campos permanecessem iguais. O marcador agora inclui o nome e tem teste de regressão.
+5. **Notificação concluída reaparecia depois de dispensada e reiniciado o processo**. O estado de publicação deduplicada era mantido apenas em memória. Agora a ação de dispensa grava a preferência no item do banco local e a publicação posterior respeita esse estado, inclusive após reinício do processo; teste cobre a política de persistência.
 
 ## Segurança e compatibilidade
 - A retomada só reaproveita bytes com validador forte da mesma representação e tamanho persistido coerente. O servidor ainda deve aceitar `If-Range`, `206` e o intervalo solicitado.
@@ -22,6 +23,7 @@ Esta revisão está restrita ao repositório **ReiVex**. Nenhum código do ReiAn
 
 ## Testes de regressão
 - `DownloadParallelRecoveryTest`: prefixo confiável, bytes extras não confirmados, progresso inválido e ETags fracos/diferentes.
+- `DownloadNotificationIconTest`: marcador atualizado após correção de nome, política de dispensa persistente e presença de ação de dispensa.
 - `BrowserMediaOptionTest`: opção de vídeo direto sem rótulo de qualidade, ao lado dos testes existentes de deduplicação, prioridade, filtros e HLS.
 - A CI da PR também invoca `DownloadHttpNaviBehaviorTest`, para resguardar as respostas HTTP, cookies e cabeçalhos entre redirecionamentos.
 - **Validação a executar na PR:** testes JVM, compilação do APK e teste manual em dispositivo Android; nenhum resultado é declarado aprovado antecipadamente.
@@ -37,6 +39,7 @@ Esta revisão está restrita ao repositório **ReiVex**. Nenhum código do ReiAn
 - [Android Developers: Handle WebView termination](https://developer.android.com/develop/ui/views/layout/webapps/handle-termination)
 - [Android Developers: User-initiated data transfer](https://developer.android.com/develop/background-work/background-tasks/uidt)
 - [Android Developers: Long-running WorkManager](https://developer.android.com/develop/background-work/background-tasks/persistent/how-to/long-running)
+- [Android Developers: notification delete intent](https://developer.android.com/reference/android/app/Notification#deleteIntent)
 - [RFC 9110: Range, ETag, If-Range and 206](https://www.rfc-editor.org/rfc/rfc9110)
 - [Reddit: usuários valorizam a captura integrada de links pelo 1DM](https://www.reddit.com/r/androidapps/comments/1nhz4ef/which_better_1dm_or_adm_or_is_there_any_better/)
 - [Reddit: reclamações de travamento em navegadores de download](https://www.reddit.com/r/androidapps/comments/1ubb7v3/is_1dm_abandoned_if_so_then_are_there_any/)

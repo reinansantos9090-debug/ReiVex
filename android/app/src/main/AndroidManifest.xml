@@ -34,6 +34,9 @@
     <receiver
         android:name="com.reivex.browser.downloads.DownloadPauseReceiver"
         android:exported="false" />
+    <receiver
+        android:name="com.reivex.browser.downloads.DownloadCompletionDismissReceiver"
+        android:exported="false" />
 
     <activity
         android:name="com.reivex.browser.downloads.DownloadBrowserActivity"
