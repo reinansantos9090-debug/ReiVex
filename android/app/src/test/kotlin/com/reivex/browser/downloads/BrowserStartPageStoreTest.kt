@@ -1,7 +1,7 @@
 package com.reivex.browser.downloads
 
 import android.content.Context
-import android.graphics.Bitmap
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -55,17 +55,19 @@ class BrowserStartPageStoreTest {
     }
 
     @Test fun clearingBrowsingHistoryPreservesFavorites() {
+        val iconDirectory=File(RuntimeEnvironment.getApplication().filesDir,"browser-favicons")
+        iconDirectory.mkdirs()
+        File(iconDirectory,"test.png").writeBytes(byteArrayOf(1,2,3))
         val favorite=BrowserStartLink("https://example.com/favorite","Favorito")
         store.toggleFavorite(favorite)
         store.recordVisit("https://example.com/recent","Visita")
-        store.saveFavicon("https://example.com/recent",Bitmap.createBitmap(8,8,Bitmap.Config.ARGB_8888))
-        assertTrue(store.favicon("https://example.com/recent")!=null)
+        assertTrue(iconDirectory.exists())
 
         store.clearRecents()
         store.clearFavicons()
 
         assertTrue(store.recents().isEmpty())
         assertEquals(listOf(favorite),store.favorites())
-        assertTrue(store.favicon("https://example.com/recent")==null)
+        assertFalse(iconDirectory.exists())
     }
 }
