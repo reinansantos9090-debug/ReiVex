@@ -81,6 +81,14 @@ class BrowserMediaOptionTest {
             assertEquals("720p",results.single().quality)
         }
     }
+    @Test fun legitimateUnlabeledVideoRemainsAvailableForDownload() {
+        val direct=source("https://cdn.example/episode-01.mp4","Qualidade não informada")
+        val results=BrowserMediaResults.combine(emptyList(),listOf(direct))
+        assertEquals(1,results.size)
+        assertEquals(direct.url,results.single().url)
+        assertEquals("Qualidade não informada",results.single().quality)
+    }
+
     @Test fun expandedMasterIsNotAnUnknownThirdResolution() {
         val master=source("https://cdn.example/master.m3u8","Qualidade não informada","hls")
         val high=source("https://cdn.example/1080.m3u8","1080p","hls")
