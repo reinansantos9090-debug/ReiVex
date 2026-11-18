@@ -8,6 +8,17 @@ package com.reivex.browser.downloads
  * Never preserve bytes without the same strong entity validator.
  */
 internal object DownloadParallelRecovery {
+    /** RFC 9110 entity-tag syntax, excluding weak validators and malformed values. */
+    fun isStrongETag(value:String?):Boolean {
+        if(value==null || value.length<2 || value.first()!='"' || value.last()!='"')return false
+        return value.substring(1,value.lastIndex).all { char ->
+            char=='!' || char.code in 0x23..0x7e || char.code in 0x80..0xff
+        }
+    }
+
+    fun resumeValidator(etag:String?,lastModified:String?):String? =
+        etag?.takeIf {isStrongETag(it)} ?: lastModified?.takeIf {it.isNotBlank()}
+
     fun keepCommittedBytes(
         committedBytes: Long,
         fileBytes: Long,
@@ -16,8 +27,6 @@ internal object DownloadParallelRecovery {
     ): Boolean =
         committedBytes >= 0 &&
         fileBytes >= committedBytes &&
-        !expectedValidator.isNullOrBlank() &&
-        expectedValidator.startsWith("\"") &&
-        !expectedValidator.startsWith("W/") &&
+        isStrongETag(expectedValidator) &&
         storedValidator == expectedValidator
 }

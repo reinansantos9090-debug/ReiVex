@@ -139,8 +139,9 @@ class DownloadEngine(private val context: Context) {
             val range=DownloadHttp.range(connection.getHeaderField("Content-Range"))
             if(code==206 && (range==null || range.start!=resume)) throw PermanentFailure("O servidor retornou uma faixa de bytes inválida")
             if(resume>0 && code==200) { restart(id,target); resume=0 }
-            val newValidator=connection.getHeaderField("ETag")?.takeUnless { it.startsWith("W/") }
-                ?: connection.getHeaderField("Last-Modified")
+            val newValidator=DownloadParallelRecovery.resumeValidator(
+                connection.getHeaderField("ETag"),connection.getHeaderField("Last-Modified"),
+            )
             if(resume>0 && validator!=null && newValidator!=null && validator!=newValidator) {
                 restart(id,target); throw IOException("O arquivo no servidor mudou; reiniciando com segurança")
             }
@@ -221,7 +222,7 @@ class DownloadEngine(private val context: Context) {
             val prefs=ReiVexPreferences(context)
             val connections=(prefs.getPreference("downloads.connections","4").toIntOrNull() ?: 4).coerceIn(1,16)
             if(connections>1 && total>=4*1024*1024 && !store.get(id)!!.json.optBoolean("parallelDisabled") &&
-                newValidator?.startsWith("\"")==true && connection.getHeaderField("Accept-Ranges").equals("bytes",true)) {
+                DownloadParallelRecovery.isStrongETag(newValidator) && connection.getHeaderField("Accept-Ranges").equals("bytes",true)) {
                 connection.disconnect(); connection=null
                 try {
                     if(DownloadRanges.receive(context,store,id,secret.getString("url"),requestHeaders,target,resume,total,newValidator,connections)) verifyAndSave(id,target)
